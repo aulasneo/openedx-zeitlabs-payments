@@ -2,7 +2,7 @@ How-tos
 #######
 
 Recover a paid purchase
-======================
+=======================
 
 ``Cart.status == PAID`` means the payment has been recorded. It does not mean
 that invoice creation and enrollment have completed. ``Cart.fulfilled_at`` is
@@ -26,9 +26,10 @@ No automatic retry scheduler or new admin action is installed by this change.
 
 Run recovery outside an enclosing database transaction. The recorded payment,
 invoice, and each completed item commit separately, so a later failure cannot
-undo earlier stages. The existing manual-payment flow intentionally retains
-its enclosing transaction because it records an administrative payment rather
-than confirming a new external charge.
+undo earlier stages. Manual payments use the same commit boundaries. Retry
+manual API requests with the same transaction ID, learner, course, and mode;
+the API reuses the original cart, including when enrollment already succeeded.
+Changing the learner or course for a recorded payment is rejected.
 
 Custom item handlers must make external side effects idempotent, for example
 by using the cart item ID as an idempotency key. A local database transaction

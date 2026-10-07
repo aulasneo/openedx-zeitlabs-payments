@@ -4,6 +4,7 @@ from typing import Any
 
 from django.db import transaction
 
+from zeitlabs_payments.exceptions import InvalidCartError
 from zeitlabs_payments.helpers import get_currency
 from zeitlabs_payments.models import Cart
 from zeitlabs_payments.providers.base import BaseProcessor
@@ -53,22 +54,31 @@ class ManualPaymentProcessor(BaseProcessor):
         :raises Exception: if anything fails
         """
         with transaction.atomic():
-            transaction_record = self.handle_payment(
-                cart=cart,
-                user=request.user,
-                transaction_status=transaction_status,
-                transaction_id=transaction_id,
-                method=self.SLUG,
-                amount=str(cart.total),
-                currency=get_currency(cart),
-                reason=reason,
-                response=None,
-                record_webhook_event=False
-            )
-            cart.refresh_from_db()
-            invoice = self.complete_paid_cart(cart, request, transaction_record)
-            logger.info(f'Successfully fulfilled cart {cart.id} and created invoice {invoice.id}.')
-            return {
-                'created_cart': cart.id,
-                'created_invoice': invoice.invoice_number
-            }
+            cart = Cart.objects.select_for_update().get(pk=cart.pk)
+            if cart.status == Cart.Status.PAID:
+                transaction_record = self.get_payment_for_recovery(cart, transaction_id)
+            elif cart.status in (Cart.Status.PENDING, Cart.Status.PROCESSING, Cart.Status.PAYMENT_PENDING):
+                transaction_record = self.handle_payment(
+                    cart=cart,
+                    user=request.user,
+                    transaction_status=transaction_status,
+                    transaction_id=transaction_id,
+                    method=self.SLUG,
+                    amount=str(cart.total),
+                    currency=get_currency(cart),
+                    reason=reason,
+                    response=None,
+                    record_webhook_event=False,
+                )
+            else:
+                raise InvalidCartError('Cannot process payment for a cancelled or refunded cart.')
+        # Leave the payment transaction before starting independently committed
+        # fulfillment stages. A later failure must preserve the recorded payment.
+        if transaction_record is None:
+            raise InvalidCartError('No unique recorded payment matches this recovery request.')
+        invoice = self.complete_paid_cart(cart, request, transaction_record)
+        logger.info(f'Successfully fulfilled cart {cart.id} and created invoice {invoice.id}.')
+        return {
+            'created_cart': cart.id,
+            'created_invoice': invoice.invoice_number
+        }

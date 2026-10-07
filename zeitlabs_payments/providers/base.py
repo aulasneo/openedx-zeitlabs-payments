@@ -347,6 +347,26 @@ class BaseProcessor:
                     item.fulfilled_at = timezone.now()
                     item.save(update_fields=['fulfilled_at'])
 
+    def get_payment_for_recovery(self, cart: Cart, transaction_id: str) -> Optional[Transaction]:
+        """Find one recorded payment, auditing rejected recovery without claiming rollback."""
+        try:
+            return Transaction.objects.get(
+                cart=cart,
+                gateway=self.SLUG,
+                gateway_transaction_id=transaction_id,
+                type=Transaction.TransactionType.PAYMENT,
+            )
+        except (Transaction.DoesNotExist, Transaction.MultipleObjectsReturned) as exc:
+            reason = 'missing' if isinstance(exc, Transaction.DoesNotExist) else 'ambiguous'
+            AuditLog.log(
+                action=AuditLog.AuditActions.RECOVERY_PAYMENT_LOOKUP_FAILED,
+                cart=cart,
+                gateway=self.SLUG,
+                context={'transaction_id': transaction_id, 'reason': reason},
+            )
+            logger.warning('Cannot recover cart %s: payment %s is %s.', cart.pk, transaction_id, reason)
+            return None
+
     def complete_paid_cart(self, cart: Cart, request: Any, transaction_record: Transaction) -> Invoice:
         """Resume local fulfillment without recording or requesting another payment.
 
@@ -433,12 +453,9 @@ class BaseProcessor:
                 if cart.status == Cart.Status.PAID:
                     # A retry must refer to the exact recorded payment. Never
                     # create a second transaction to recover a paid cart.
-                    transaction_record = Transaction.objects.get(
-                        cart=cart,
-                        gateway=self.SLUG,
-                        gateway_transaction_id=transaction_id,
-                        type=Transaction.TransactionType.PAYMENT,
-                    )
+                    transaction_record = self.get_payment_for_recovery(cart, transaction_id)
+                    if transaction_record is None:
+                        return None
                 else:
                     if cart.status not in [Cart.Status.PROCESSING, Cart.Status.PAYMENT_PENDING]:
                         AuditLog.log(

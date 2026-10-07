@@ -8,6 +8,8 @@ from common.djangoapps.student.models import CourseEnrollment
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.http import HttpRequest
+from django.urls import reverse
+from rest_framework.test import APIClient
 
 from test_utils.dummy_processor import DummyProcessor
 from zeitlabs_payments.cart_handler import CART_HANDLER
@@ -21,6 +23,7 @@ from zeitlabs_payments.models import (
     Transaction,
     WebhookEvent,
 )
+from zeitlabs_payments.providers.manual_payment.processor import ManualPaymentProcessor
 
 pytestmark = pytest.mark.django_db
 
@@ -158,7 +161,7 @@ def test_retry_repairs_legacy_partial_invoice(payment):  # pylint: disable=redef
     assert_single_purchase(cart)
 
 
-@pytest.mark.parametrize('mismatch', ['id', 'gateway', 'cart', 'type'])
+@pytest.mark.parametrize('mismatch', ['id', 'gateway', 'cart', 'type', 'ambiguous'])
 def test_paid_cart_requires_matching_recorded_payment(payment, mismatch):  # pylint: disable=redefined-outer-name
     """Recovery cannot attach an unrelated payment to a paid cart."""
     processor, params = payment
@@ -172,13 +175,20 @@ def test_paid_cart_requires_matching_recorded_payment(payment, mismatch):  # pyl
         record.gateway = 'another-provider'
     elif mismatch == 'cart':
         record.cart = Cart.objects.create(user=cart.user, status=Cart.Status.PAID)
-    else:
+    elif mismatch == 'type':
         record.type = Transaction.TransactionType.REFUND
+    else:
+        record.pk = None
     record.save()
     assert processor.process_payment_and_update_records(**params) is None
     assert not Invoice.objects.filter(cart=cart).exists()
     assert not CourseEnrollment.objects.filter(user=cart.user).exists()
-    assert Transaction.objects.filter(gateway_transaction_id='recovery-payment').count() == 1
+    assert Transaction.objects.filter(gateway_transaction_id='recovery-payment').count() == (
+        2 if mismatch == 'ambiguous' else 1
+    )
+    assert not AuditLog.objects.filter(cart=cart, action=AuditLog.AuditActions.TRANSACTION_ROLLED_BACK).exists()
+    audit = AuditLog.objects.get(cart=cart, action=AuditLog.AuditActions.RECOVERY_PAYMENT_LOOKUP_FAILED)
+    assert ('ambiguous' if mismatch == 'ambiguous' else 'missing') in audit.details
 
 
 @pytest.mark.parametrize('status', [Cart.Status.CANCELLED, Cart.Status.REFUND_REQUESTED, Cart.Status.REFUNDED])
@@ -236,3 +246,117 @@ def test_migration_marks_only_audited_legacy_completions(payment):  # pylint: di
     assert completed.fulfilled_at == audit.created_at
     assert completed.items.get().fulfilled_at == audit.created_at
     assert incomplete.fulfilled_at is None
+
+
+def test_manual_payment_preserves_payment_after_invoice_failure(payment):  # pylint: disable=redefined-outer-name
+    """A manual retry reuses the payment committed before invoice creation failed."""
+    _, params = payment
+    processor = ManualPaymentProcessor()
+    cart = params['cart']
+    args = (params['request'], cart, 'manual-recovery', 'success')
+    with patch.object(processor, 'create_invoice', side_effect=RuntimeError('invoice unavailable')):
+        with pytest.raises(RuntimeError, match='invoice unavailable'):
+            processor.process_payment(*args)
+    cart.refresh_from_db()
+    assert cart.status == Cart.Status.PAID
+    assert Transaction.objects.filter(cart=cart).count() == 1
+    assert not Invoice.objects.filter(cart=cart).exists()
+    with patch.object(processor, 'handle_payment', side_effect=AssertionError('must reuse payment')):
+        result = processor.process_payment(*args)
+        assert processor.process_payment(*args) == result
+    assert Invoice.objects.filter(cart=cart).count() == 1
+    assert CourseEnrollment.objects.filter(user=cart.user).count() == 1
+    assert not WebhookEvent.objects.filter(related_transaction__cart=cart).exists()
+
+
+def test_manual_retry_preserves_completed_items_and_external_effects(payment):  # pylint: disable=redefined-outer-name
+    """External effects and checkpoints of earlier items survive a later failure."""
+    _, params = payment
+    cart = params['cart']
+    first = cart.items.get()
+    catalogue = CatalogueItem.objects.get(sku='course1-org2-no-id-professional')
+    second = cart.items.create(catalogue_item=catalogue, original_price=catalogue.price, final_price=catalogue.price)
+    handler = CART_HANDLER[CatalogueItem.ItemType.PAID_COURSE]
+    external_effects = []
+
+    def fulfill(item, gateway):  # pylint: disable=unused-argument
+        external_effects.append(item.pk)
+
+    def fail_second(item, gateway):
+        if item.pk == second.pk:
+            raise RuntimeError('second item failed')
+        fulfill(item, gateway)
+
+    processor = ManualPaymentProcessor()
+    args = (params['request'], cart, 'manual-recovery', 'success')
+    with patch.object(handler, 'fulfill', side_effect=fail_second):
+        with pytest.raises(RuntimeError, match='second item failed'):
+            processor.process_payment(*args)
+    first.refresh_from_db()
+    assert first.fulfilled_at is not None
+    assert external_effects == [first.pk]
+    assert Transaction.objects.filter(cart=cart).count() == 1
+    with patch.object(handler, 'fulfill', side_effect=fulfill):
+        result = processor.process_payment(*args)
+        assert processor.process_payment(*args) == result
+    assert external_effects == [first.pk, second.pk]
+    assert Invoice.objects.filter(cart=cart).count() == 1
+    assert not cart.items.filter(fulfilled_at__isnull=True).exists()
+
+
+@pytest.fixture
+def manual_api(base_data):  # pylint: disable=unused-argument
+    """An authorized manual-payment request."""
+    client = APIClient()
+    client.force_authenticate(get_user_model().objects.get(pk=1))
+    return client, reverse('zeitlabs_payments:manual-payment'), {
+        'user_id': 3,
+        'course_key': 'course-v1:org1+1+1',
+        'mode': 'no-id-professional',
+        'transaction_id': 'manual-api-recovery',
+        'transaction_status': 'success',
+    }
+
+
+def test_manual_api_retry_reuses_cart_after_enrollment_succeeds(manual_api):  # pylint: disable=redefined-outer-name
+    """API retries must bypass new-enrollment validation for the original purchase."""
+    client, url, payload = manual_api
+    log = AuditLog.log
+
+    def fail_completion(action, **kwargs):
+        if action == AuditLog.AuditActions.CART_FULFILLED:
+            raise RuntimeError('completion unavailable')
+        return log(action=action, **kwargs)
+
+    with patch.object(AuditLog, 'log', side_effect=fail_completion):
+        assert client.post(url, payload).status_code == 400
+    record = Transaction.objects.get(gateway_transaction_id=payload['transaction_id'])
+    assert CourseEnrollment.objects.filter(user_id=3).count() == 1
+    with patch.object(CourseEnrollment, 'enroll', side_effect=AssertionError('must not enroll again')):
+        recovered = client.post(url, payload)
+        assert recovered.status_code == 201
+        assert client.post(url, payload).data == recovered.data
+    assert recovered.data['created_cart'] == record.cart_id
+    assert Cart.objects.filter(user_id=3).count() == 1
+    assert Transaction.objects.filter(cart_id=record.cart_id).count() == 1
+    assert Invoice.objects.filter(cart_id=record.cart_id).count() == 1
+
+
+@pytest.mark.parametrize('mismatch', ['user', 'course', 'ambiguous', 'refunded'])
+def test_manual_api_rejects_invalid_recovery(manual_api, mismatch):  # pylint: disable=redefined-outer-name
+    """A transaction ID cannot be reused for another purchase or after refund."""
+    client, url, payload = manual_api
+    assert client.post(url, payload).status_code == 201
+    count = Cart.objects.count()
+    if mismatch == 'user':
+        payload['user_id'] = 4
+    elif mismatch == 'course':
+        payload['course_key'] = 'course-v1:org2+1+1'
+    elif mismatch == 'refunded':
+        Cart.objects.filter(user_id=3).update(status=Cart.Status.REFUNDED)
+    else:
+        record = Transaction.objects.get(gateway_transaction_id=payload['transaction_id'])
+        record.pk = None
+        record.save()
+    assert client.post(url, payload).status_code == 400
+    assert Cart.objects.count() == count

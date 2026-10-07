@@ -183,9 +183,10 @@ class BaseProcessor:
             logger.error(f'Payfort Error! merchant_reference: {reference} is invalid. Unable to extract site.')
             return None
 
+    @db_transaction.atomic
     def create_invoice(self, cart: Cart, request: Any, transaction_record: Transaction = None) -> Invoice:
         """
-        Create an invoice for the given cart.
+        Create or repair an invoice for the given cart and recorded payment.
 
         :param cart: The cart to create an invoice for.
         :raises InvoiceError: If the cart is not in PAID status.
@@ -196,7 +197,7 @@ class BaseProcessor:
                 f'Cannot create invoice: Cart {cart.id} is in status "{cart.status}", '
                 f'expected status "{Cart.Status.PAID}".'
             )
-        invoice = Invoice.objects.create(
+        invoice_values = dict(
             invoice_number=generate_invoice_number(request),
             cart=cart,
             status=Invoice.InvoiceStatus.PAID,
@@ -208,14 +209,24 @@ class BaseProcessor:
             paid_at=timezone.now(),
             related_transaction=transaction_record
         )
+        # Reuse a recorded invoice after a failed fulfillment attempt. Missing
+        # lines from an older, partially created invoice are repaired as well.
+        if transaction_record is None:
+            invoice = Invoice.objects.create(**invoice_values)
+        else:
+            invoice, _ = Invoice.objects.get_or_create(
+                cart=cart, related_transaction=transaction_record, defaults=invoice_values,
+            )
         for item in cart.items.all():
-            InvoiceItem.objects.create(
+            InvoiceItem.objects.get_or_create(
                 invoice=invoice,
                 cart_item=item,
-                original_price=item.original_price,
-                discount_amount=item.discount_amount,
-                tax_amount=item.tax_amount,
-                price=item.final_price,
+                defaults={
+                    'original_price': item.original_price,
+                    'discount_amount': item.discount_amount,
+                    'tax_amount': item.tax_amount,
+                    'price': item.final_price,
+                },
             )
 
         logger.info(
@@ -302,7 +313,9 @@ class BaseProcessor:
         :raises CartFulfillmentError: If any error occurs during fulfillment or if no handler is found.
         :return: None
         """
-        for item in cart.items.all():
+        for item in cart.items.order_by('pk'):
+            if item.fulfilled_at is not None:
+                continue
             logger.debug(f'Processing item {item.id} of type {item.catalogue_item.type} in cart {cart.id}.')
             handler = CART_HANDLER.get(item.catalogue_item.type)
 
@@ -322,7 +335,54 @@ class BaseProcessor:
                 )
                 raise CartFulfillmentError(f'Unsupported catalogue item type: {item.catalogue_item.type}')
 
-            handler.fulfill(item, self.SLUG)
+            # Commit each item independently. A later failure must not cause a
+            # successfully fulfilled item to run again on recovery.
+            with db_transaction.atomic():
+                locked_cart = Cart.objects.select_for_update().get(pk=cart.pk)
+                if locked_cart.status != Cart.Status.PAID:
+                    raise CartFulfillmentError('Only paid carts can be fulfilled.')
+                item = cart.items.select_for_update().get(pk=item.pk)
+                if item.fulfilled_at is None:
+                    handler.fulfill(item, self.SLUG)
+                    item.fulfilled_at = timezone.now()
+                    item.save(update_fields=['fulfilled_at'])
+
+    def complete_paid_cart(self, cart: Cart, request: Any, transaction_record: Transaction) -> Invoice:
+        """Resume local fulfillment without recording or requesting another payment.
+
+        Call outside an enclosing database transaction so each completed stage
+        survives later failures. Item handlers must make external effects idempotent;
+        a database rollback cannot undo a request to another service.
+        """
+        if (
+            transaction_record.cart_id != cart.pk
+            or transaction_record.gateway != self.SLUG
+            or transaction_record.type != Transaction.TransactionType.PAYMENT
+        ):
+            raise InvalidCartError('Payment transaction does not belong to this cart and processor.')
+        with db_transaction.atomic():
+            cart = Cart.objects.select_for_update().get(pk=cart.pk)
+            if cart.status != Cart.Status.PAID:
+                raise InvalidCartError('Only paid carts can be recovered.')
+            invoice = self.create_invoice(cart, request, transaction_record)
+            if cart.fulfilled_at is not None:
+                return invoice
+
+        self.fulfill_cart(cart)
+        with db_transaction.atomic():
+            cart = Cart.objects.select_for_update().get(pk=cart.pk)
+            if cart.status != Cart.Status.PAID:
+                raise InvalidCartError('Only paid carts can be recovered.')
+            if cart.fulfilled_at is None:
+                cart.fulfilled_at = timezone.now()
+                cart.save(update_fields=['fulfilled_at'])
+                AuditLog.log(
+                    action=AuditLog.AuditActions.CART_FULFILLED,
+                    cart=cart,
+                    gateway=self.SLUG,
+                    context={},
+                )
+        return invoice
 
     def process_payment_and_update_records(  # pylint: disable= too-many-positional-arguments
         self,
@@ -339,7 +399,10 @@ class BaseProcessor:
         record_webhook_event: bool = True,
     ) -> Optional[Invoice]:
         """
-        Generic method to handle payment, invoice creation, and fulfillment.
+        Record a payment, or resume fulfillment of the same recorded payment.
+
+        A paid cart is recoverable only with its original processor and payment
+        transaction ID. Repeated successful calls return the existing invoice.
 
         :param cart: Cart instance
         :param data: Raw payment data from gateway
@@ -354,21 +417,6 @@ class BaseProcessor:
         :param record_webhook_event: Whether to record webhook payload
         :return: Created Invoice instance or None
         """
-        if cart.status not in [Cart.Status.PROCESSING, Cart.Status.PAYMENT_PENDING]:
-            AuditLog.log(
-                action=AuditLog.AuditActions.RESPONSE_INVALID_CART,
-                cart=cart,
-                gateway=self.SLUG,
-                context={
-                    'cart_status': cart.status,
-                    'required_cart_state': f'{Cart.Status.PROCESSING} or {Cart.Status.PAYMENT_PENDING}'}
-            )
-            logger.warning(
-                f'Cart {cart.id} in invalid status: {cart.status} '
-                '(expected: PROCESSING or PAYMENT_PENDING ).'
-            )
-            return None
-
         if site_id:
             try:
                 site = Site.objects.get(id=site_id)
@@ -381,19 +429,45 @@ class BaseProcessor:
 
         try:
             with db_transaction.atomic():
-                logger.info(f'Recording payment transaction for cart {cart.id}.')
-                transaction_record = self.handle_payment(
-                    cart=cart,
-                    user=request.user if hasattr(request, 'user') and request.user.is_authenticated else None,
-                    transaction_status=transaction_status,
-                    transaction_id=transaction_id,
-                    method=method,
-                    amount=amount,
-                    currency=currency,
-                    reason=reason,
-                    response=data,
-                    record_webhook_event=record_webhook_event,
-                )
+                cart = Cart.objects.select_for_update().get(pk=cart.pk)
+                if cart.status == Cart.Status.PAID:
+                    # A retry must refer to the exact recorded payment. Never
+                    # create a second transaction to recover a paid cart.
+                    transaction_record = Transaction.objects.get(
+                        cart=cart,
+                        gateway=self.SLUG,
+                        gateway_transaction_id=transaction_id,
+                        type=Transaction.TransactionType.PAYMENT,
+                    )
+                else:
+                    if cart.status not in [Cart.Status.PROCESSING, Cart.Status.PAYMENT_PENDING]:
+                        AuditLog.log(
+                            action=AuditLog.AuditActions.RESPONSE_INVALID_CART,
+                            cart=cart,
+                            gateway=self.SLUG,
+                            context={
+                                'cart_status': cart.status,
+                                'required_cart_state': f'{Cart.Status.PROCESSING} or {Cart.Status.PAYMENT_PENDING}'}
+                        )
+                        logger.warning(
+                            f'Cart {cart.id} in invalid status: {cart.status} '
+                            '(expected: PROCESSING or PAYMENT_PENDING ).'
+                        )
+                        return None
+
+                    logger.info(f'Recording payment transaction for cart {cart.id}.')
+                    transaction_record = self.handle_payment(
+                        cart=cart,
+                        user=request.user if hasattr(request, 'user') and request.user.is_authenticated else None,
+                        transaction_status=transaction_status,
+                        transaction_id=transaction_id,
+                        method=method,
+                        amount=amount,
+                        currency=currency,
+                        reason=reason,
+                        response=data,
+                        record_webhook_event=record_webhook_event,
+                    )
 
         except DuplicateTransactionError:
             AuditLog.log(
@@ -423,15 +497,7 @@ class BaseProcessor:
             return None
 
         try:
-            cart.refresh_from_db()
-            invoice = self.create_invoice(cart, request, transaction_record)
-            self.fulfill_cart(cart)
-            AuditLog.log(
-                action=AuditLog.AuditActions.CART_FULFILLED,
-                cart=cart,
-                gateway=self.SLUG,
-                context={},
-            )
+            invoice = self.complete_paid_cart(cart, request, transaction_record)
             logger.info(f'Successfully fulfilled cart {cart.id} and created invoice {invoice.id}.')
             return invoice
 

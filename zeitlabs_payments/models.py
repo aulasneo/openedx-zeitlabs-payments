@@ -36,6 +36,7 @@ class Cart(TimeStampedModel):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='carts')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    fulfilled_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     @property
     def total(self) -> Decimal:
@@ -258,6 +259,7 @@ class CartItem(TimeStampedModel):
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True)
     final_price = models.DecimalField(max_digits=10, decimal_places=2)
+    fulfilled_at = models.DateTimeField(null=True, blank=True, editable=False)
 
 
 class Invoice(TimeStampedModel):

@@ -29,7 +29,7 @@ def base_processor():
 
 
 @pytest.fixture
-def cart():
+def cart(base_data):  # pylint: disable=unused-argument
     """cart fixture"""
     item = CatalogueItem.objects.get(sku='custom-sku-1')
     user_cart = Cart.objects.create(user=User.objects.get(id=3), status=Cart.Status.PROCESSING)

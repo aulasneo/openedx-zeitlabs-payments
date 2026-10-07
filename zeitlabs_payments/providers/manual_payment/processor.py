@@ -3,10 +3,9 @@ import logging
 from typing import Any
 
 from django.db import transaction
-from django.utils.translation import gettext_lazy as _
 
 from zeitlabs_payments.helpers import get_currency
-from zeitlabs_payments.models import AuditLog, Cart
+from zeitlabs_payments.models import Cart
 from zeitlabs_payments.providers.base import BaseProcessor
 
 logger = logging.getLogger(__name__)
@@ -67,14 +66,7 @@ class ManualPaymentProcessor(BaseProcessor):
                 record_webhook_event=False
             )
             cart.refresh_from_db()
-            invoice = self.create_invoice(cart, request, transaction_record)
-            self.fulfill_cart(cart)
-            AuditLog.log(
-                action=AuditLog.AuditActions.CART_FULFILLED,
-                cart=cart,
-                gateway=self.SLUG,
-                context={}
-            )
+            invoice = self.complete_paid_cart(cart, request, transaction_record)
             logger.info(f'Successfully fulfilled cart {cart.id} and created invoice {invoice.id}.')
             return {
                 'created_cart': cart.id,

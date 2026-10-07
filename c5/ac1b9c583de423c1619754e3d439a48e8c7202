@@ -1,0 +1,35 @@
+docs/how-tos/index.rst
+  s_a0b1a3b2b1a834::t_26e29bdffd6d7a 3-43
+zeitlabs_payments/providers/base.py
+  s_a0b1a3b2b1a834::t_26e29bdffd6d7a 186,189,200,212-219,221,224-229,316-318,338-385,402-405,432-470,500
+tests/test_providers/test_base.py
+  s_a0b1a3b2b1a834::t_fdc7ef0e527064 32
+zeitlabs_payments/providers/manual_payment/processor.py
+  s_a0b1a3b2b1a834::t_26e29bdffd6d7a 8
+  s_a0b1a3b2b1a834::t_50f9de596faec8 69
+tests/test_providers/test_recovery.py
+  s_a0b1a3b2b1a834::t_819763739f79aa 14-23,185-187,197-221
+  s_a0b1a3b2b1a834::t_85452e8876e03d 1-13,24-184,188-196,222-238
+tests/test_providers/test_manual_payment/test_processor.py
+  s_a0b1a3b2b1a834::t_fdc7ef0e527064 14
+zeitlabs_payments/models.py
+  s_a0b1a3b2b1a834::t_1bc77d3fd3fa64 39,262
+zeitlabs_payments/migrations/0003_fulfillment_tracking.py
+  s_a0b1a3b2b1a834::t_9f7f79105020b9 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5ac1b9c583de423c1619754e3d439a48e8c7202",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

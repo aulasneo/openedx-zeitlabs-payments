@@ -108,6 +108,7 @@ class AuditLog(TimeStampedModel):
         USER_ENROLLED = 'user_enrolled'
         USER_ENROLLED_ERROR = 'user_enrolled_error'
         REDIRECT_TO_PAYMENT = 'redirect_to_payment_gateway'
+        PAYMENT_INITIALIZATION_FAILED = 'payment_initialization_failed'
         DUPLICATE_TRANSACTION = 'duplicate_transaction_detected'
         BAD_RESPONSE_SIGNATURE = 'bad_response_signature'
         RECEIVED_RESPONSE = 'received_gateway_response'
@@ -132,6 +133,9 @@ class AuditLog(TimeStampedModel):
             'during cart fulfillment for catalogue_item: {catalogue_item_id}.'
         ),
         AuditActions.REDIRECT_TO_PAYMENT: 'Redirecting to payment page.',
+        AuditActions.PAYMENT_INITIALIZATION_FAILED: (
+            'Payment initialization failed with HTTP {response_status}; gateway outcome requires reconciliation.'
+        ),
         AuditActions.DUPLICATE_TRANSACTION: (
             'Transaction with id: {transaction_id} already existed. Cart has status: {cart_status}.'
         ),

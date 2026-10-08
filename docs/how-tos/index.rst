@@ -42,3 +42,31 @@ marks historical purchases as fulfilled only when a ``cart_fulfilled`` audit
 entry exists. Historical partially completed purchases without item
 checkpoints should be reconciled before retrying custom handlers that have
 external side effects.
+
+Initiate a payment safely
+=========================
+
+Submit a CSRF-protected POST to the URL returned in payment-method metadata.
+The built-in checkout renders a separate POST form for each payment method.
+GET requests to the initiation URL return HTTP 405 and cannot start a payment.
+Custom checkout clients must submit the CSRF token with their POST request.
+
+Only a pending cart owned by the authenticated learner can start a payment.
+The endpoint atomically claims the cart as processing and commits that state
+before invoking the processor. Repeated or overlapping requests return HTTP
+409 without contacting the gateway. Processing, payment-pending, paid,
+cancelled, and refunded carts cannot be restarted through this endpoint.
+
+Initialization exceptions return HTTP 502 and an error page with the cart
+reference. Processor error responses are recorded as initialization failures,
+not successful redirects. The cart remains processing: an external order may
+have been accepted even if the response timed out or could not be rendered.
+There is no automatic reset or retry. Support must reconcile the cart with the
+gateway before allowing another payment, including when a process stops after
+claiming the cart. Do not create a replacement purchase until the first
+attempt's outcome is known.
+
+The initiation view opts out of ATOMIC_REQUESTS so its claim survives later
+exceptions. Call it outside any other enclosing database transaction. Custom
+processors must return an HTTP error status for initialization failures and
+must not automatically retry order-creation requests after ambiguous errors.

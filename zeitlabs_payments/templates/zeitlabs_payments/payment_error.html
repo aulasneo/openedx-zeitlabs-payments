@@ -35,8 +35,14 @@
 </style>
 
 <div class="message-box">
-    <h1>{% trans "Something went wrong while fullfilling Payment" %}</h1>
-    <p>{% trans "We couldn’t process your transaction completely at this time." %}</p>
+    {% if initialization_failed %}
+        <h1>{% trans "Payment initialization could not be completed" %}</h1>
+        <p>{% trans "Your payment may have started. Please contact support before trying another payment." %}</p>
+        <p>{% blocktrans %}Cart reference: {{ cart_id }}{% endblocktrans %}</p>
+    {% else %}
+        <h1>{% trans "Something went wrong while fullfilling Payment" %}</h1>
+        <p>{% trans "We couldn’t process your transaction completely at this time." %}</p>
+    {% endif %}
     {% if merchant_reference %}
         <p>
             {% blocktrans with ref=merchant_reference %}

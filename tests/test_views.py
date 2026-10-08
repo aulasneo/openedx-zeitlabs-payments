@@ -4,15 +4,14 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.contrib.sites.models import Site
-from django.test import RequestFactory, TestCase
+from django.http import HttpResponse
+from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status as http_status
 from rest_framework.test import APITestCase
 
 from zeitlabs_payments.helpers import get_currency, get_settings
 from zeitlabs_payments.models import Cart, CatalogueItem, Invoice, Transaction
-from zeitlabs_payments.views import InitiatePaymentView
 
 User = get_user_model()
 
@@ -200,36 +199,38 @@ class InitiatePaymentViewTest(TestCase):
         self.url = reverse('zeitlabs_payments:initiate-payment', args=[self.provider, str(self.cart.id)])
 
     def test_redirects_if_not_logged_in(self):
-        response = self.client.get(self.url)
+        response = self.client.post(self.url)
         self.assertEqual(response.status_code, 302)
 
     def test_returns_400_if_provider_invalid(self):
         self.client.force_login(self.user)
         bad_url = reverse('zeitlabs_payments:initiate-payment', args=['invalid', str(self.cart.id)])
-        response = self.client.get(bad_url)
+        response = self.client.post(bad_url)
         self.assertEqual(response.status_code, 400)
         self.assertIn(b'Unsupported payment provider', response.content)
 
     def test_returns_400_if_cart_does_not_exist(self):
         self.client.force_login(self.user)
         bad_url = reverse('zeitlabs_payments:initiate-payment', args=[self.provider, str(1000)])
-        response = self.client.get(bad_url)
+        response = self.client.post(bad_url)
         self.assertEqual(response.status_code, 400)
         self.assertIn(b'Cart with ID 1000 does not exist.', response.content)
 
     def test_returns_400_if_cart_does_not_belong_to_user(self):
         self.client.force_login(self.other_user)
-        response = self.client.get(self.url)
+        response = self.client.post(self.url)
         self.assertEqual(response.status_code, 400)
         self.assertIn(b'attempted to access cart', response.content)
 
-    def test_successful_payment_view_initiation(self):
-        request = RequestFactory().get(self.url)
-        request.user = self.cart.user
-        request.site = Site.objects.create(name='test.com', domain='test.com')
-        InitiatePaymentView.as_view()(request, self.provider, self.cart.id)
+    @patch('test_utils.dummy_processor.DummyProcessor.payment_view')
+    def test_successful_payment_view_initiation(self, payment_view):
+        payment_view.return_value = HttpResponse('gateway checkout')
+        self.client.force_login(self.user)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 200)
         self.cart.refresh_from_db()
         self.assertEqual(self.cart.status, Cart.Status.PROCESSING)
+        payment_view.assert_called_once()
 
 
 class CheckoutViewTests(TestCase):

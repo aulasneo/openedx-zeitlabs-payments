@@ -67,13 +67,15 @@
                    <div class="col-sm-12">
                        <div class="pull-right payment-buttons" data-basket-id="1">
                         {% for method in methods %}
-                           <a
-                              href="{{ method.url }}"
+                           <form action="{{ method.url }}" method="post">
+                              {% csrf_token %}
+                              <button type="submit"
                               class="btn payment-button pay-btn-{{ method.slug }}"
                               data-slug="{{ method.slug }}"
                               data-title="{{ method.title }}">
                               {{ method.checkout_text }}
-                           </a>
+                              </button>
+                           </form>
                         {% endfor %}
                        </div>
                    </div>

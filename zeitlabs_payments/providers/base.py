@@ -380,6 +380,17 @@ class BaseProcessor:
             or transaction_record.type != Transaction.TransactionType.PAYMENT
         ):
             raise InvalidCartError('Payment transaction does not belong to this cart and processor.')
+        if transaction_record.status.casefold() != self.TRANSACTION_STATUS_SUCCESS.casefold():
+            AuditLog.log(
+                action=AuditLog.AuditActions.INVALID_TRANSACTION,
+                cart=cart,
+                gateway=self.SLUG,
+                context={
+                    'transaction_id': transaction_record.gateway_transaction_id,
+                    'status': transaction_record.status,
+                },
+            )
+            raise InvalidCartError('Only successful recorded payments can be fulfilled.')
         with db_transaction.atomic():
             cart = Cart.objects.select_for_update().get(pk=cart.pk)
             if cart.status != Cart.Status.PAID:

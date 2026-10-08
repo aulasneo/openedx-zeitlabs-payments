@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 
 from test_utils.dummy_processor import DummyProcessor
 from zeitlabs_payments.cart_handler import CART_HANDLER
+from zeitlabs_payments.exceptions import InvalidCartError
 from zeitlabs_payments.models import (
     AuditLog,
     Cart,
@@ -360,3 +361,42 @@ def test_manual_api_rejects_invalid_recovery(manual_api, mismatch):  # pylint: d
         record.save()
     assert client.post(url, payload).status_code == 400
     assert Cart.objects.count() == count
+
+    if mismatch == 'ambiguous':
+        audit = AuditLog.objects.get(action=AuditLog.AuditActions.RECOVERY_PAYMENT_LOOKUP_FAILED)
+        assert audit.cart_id is None
+        assert audit.gateway == ManualPaymentProcessor.SLUG
+        assert audit.details == f"Recovery rejected: recorded payment {payload['transaction_id']} is ambiguous."
+
+
+@pytest.mark.parametrize('recorded_status', ['failed', 'pending', 'unknown', ''])
+@pytest.mark.parametrize('entry_point', ['manual_api', 'direct'])
+def test_recovery_rejects_unsuccessful_recorded_payment(
+    manual_api, recorded_status, entry_point,  # pylint: disable=redefined-outer-name
+):
+    """A success in the retry payload cannot override the stored payment result."""
+    client, url, payload = manual_api
+    with patch.object(ManualPaymentProcessor, 'create_invoice', side_effect=RuntimeError('invoice unavailable')):
+        assert client.post(url, payload).status_code == 400
+    record = Transaction.objects.get(gateway_transaction_id=payload['transaction_id'])
+    record.status = recorded_status
+    record.save(update_fields=['status'])
+    if entry_point == 'manual_api':
+        response = client.post(url, payload)
+        assert response.status_code == 400
+        assert 'Only successful recorded payments' in response.data['details']
+    else:
+        request = HttpRequest()
+        request.user = record.cart.user
+        with pytest.raises(InvalidCartError, match='Only successful recorded payments'):
+            ManualPaymentProcessor().complete_paid_cart(record.cart, request, record)
+    record.refresh_from_db()
+    assert record.status == recorded_status
+    assert Cart.objects.filter(user_id=3).count() == 1
+    assert Transaction.objects.filter(cart=record.cart).count() == 1
+    assert not Invoice.objects.filter(cart=record.cart).exists()
+    assert not CourseEnrollment.objects.filter(user_id=3).exists()
+    assert record.cart.fulfilled_at is None
+    assert not record.cart.items.filter(fulfilled_at__isnull=False).exists()
+    audit = AuditLog.objects.get(action=AuditLog.AuditActions.INVALID_TRANSACTION, cart=record.cart)
+    assert audit.details == f"Transaction: {payload['transaction_id']} is in invalid state: {recorded_status}."

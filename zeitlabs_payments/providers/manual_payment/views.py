@@ -187,6 +187,11 @@ class ManualPaymentView(APIView):
         except models.Transaction.DoesNotExist:
             return handler.validate_item_and_create_cart(user, catalogue_item, cancel_old_carts=False)
         except models.Transaction.MultipleObjectsReturned as exc:
+            models.AuditLog.log(
+                action=models.AuditLog.AuditActions.RECOVERY_PAYMENT_LOOKUP_FAILED,
+                gateway=ManualPaymentProcessor.SLUG,
+                context={'transaction_id': transaction_id, 'reason': 'ambiguous'},
+            )
             raise InvalidCartError('Multiple recorded payments match this transaction ID.') from exc
 
         cart = payment.cart

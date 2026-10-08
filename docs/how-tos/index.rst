@@ -73,3 +73,50 @@ The initiation view opts out of ATOMIC_REQUESTS so its claim survives later
 exceptions. Call it outside any other enclosing database transaction. Custom
 processors must return an HTTP error status for initialization failures and
 must not automatically retry order-creation requests after ambiguous errors.
+
+Identify a recorded payment
+===========================
+
+A transaction is unique by ``(gateway, gateway_account, gateway_transaction_id)``.
+The same external ID may exist for different gateways or merchant accounts.
+Payment and refund records share this namespace: record a refund using its
+own external transaction ID, rather than the original payment ID. Uniqueness
+uses the database's collation for these string fields.
+
+``BaseProcessor.TRANSACTION_ACCOUNT`` supplies the non-secret, stable merchant
+account namespace. Its default empty string preserves existing processors and
+legacy records. A processor serving multiple accounts must set this attribute
+on its instance before recording or recovering payments, using the same
+namespace for callbacks, polling, and operator recovery. Do not use credentials
+or transient session IDs. Before changing the namespace for an existing
+account, backfill that account's historical ``Transaction.gateway_account``
+values from verified gateway/account records so retries can still find them.
+The manual payment API uses the manual processor's account namespace.
+
+Database uniqueness handles simultaneous inserts. A duplicate raised by
+``handle_payment()`` is translated to ``DuplicateTransactionError`` without
+leaving its caller's database transaction unusable. A retry of the same
+recorded payment on its paid cart resumes fulfillment and returns its invoice.
+The same payment ID submitted for another cart is rejected as a duplicate;
+that cart remains unchanged and gets no invoice, webhook, or fulfillment.
+Cart row locks and item checkpoints serialize recording and fulfillment.
+
+Before migration 0004, stop payment writers (including callbacks and polling)
+and back up the database. The migration checks legacy gateway/transaction-ID
+pairs before any schema change. If duplicates exist it stops and reports up
+to ten conflicting groups, leaving all financial records intact. Reconcile
+these records and their linked invoices/events with the gateway before
+retrying; no automatic deletion or guessing of the correct payment occurs.
+Keep writers stopped until the uniqueness constraint is installed. MySQL
+schema changes cannot be rolled back if a later DDL operation fails; inspect
+and repair migration state before retrying after such a failure.
+
+The standard local suite tests the unique constraint's concurrent inserts on
+SQLite and exercises the legacy migration in a disposable database. Full
+recording/invoice/fulfillment races require InnoDB and run in the dedicated
+MySQL CI job, under both read-committed and repeatable-read isolation. To run
+locally against an explicitly supplied test MySQL server, configure
+``PAYMENT_MYSQL_HOST``, ``PAYMENT_MYSQL_PORT``, ``PAYMENT_MYSQL_USER``, and
+``PAYMENT_MYSQL_PASSWORD``, then run ``tox -e mysql-concurrency``. The test user
+needs permission to create/drop disposable databases; the runner creates a
+uniquely named schema and removes it afterward.

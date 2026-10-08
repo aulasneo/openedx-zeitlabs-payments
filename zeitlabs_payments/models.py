@@ -77,6 +77,7 @@ class Transaction(TimeStampedModel):
     type = models.CharField(max_length=20, choices=TransactionType.choices)
     status = models.CharField(max_length=50)
     gateway = models.CharField(max_length=50)
+    gateway_account = models.CharField(max_length=100, blank=True, default='')
     gateway_transaction_id = models.CharField(max_length=255)
     method = models.CharField(max_length=50)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -86,6 +87,14 @@ class Transaction(TimeStampedModel):
     initiator_user = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True
     )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['gateway', 'gateway_account', 'gateway_transaction_id'],
+                name='unique_gateway_account_transaction',
+            ),
+        ]
 
 
 class WebhookEvent(TimeStampedModel):

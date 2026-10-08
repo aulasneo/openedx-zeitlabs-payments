@@ -161,7 +161,7 @@ class CartItemSerializer(serializers.ModelSerializer):
         handler_method = getattr(self, f'_get_{item_type}_details', None)
 
         if callable(handler_method):
-            return handler_method(obj)  # pylint: disable=not-callable
+            return handler_method(obj)
 
         logger.warning(f"No handler implemented for item type '{item_type}'. Returning empty details.")
         return {}

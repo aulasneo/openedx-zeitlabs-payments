@@ -55,6 +55,7 @@ class TransactionAdmin(admin.ModelAdmin):
         'type',
         'status',
         'gateway',
+        'gateway_account',
         'gateway_transaction_id',
         'method',
         'amount',
@@ -63,7 +64,10 @@ class TransactionAdmin(admin.ModelAdmin):
         'created_at',
     )
     list_filter = ('type', 'status', 'gateway', 'method', 'currency', 'created_at')
-    search_fields = ('gateway_transaction_id', 'cart__id', 'initiator_user__username', 'initiator_user__email')
+    search_fields = (
+        'gateway_account', 'gateway_transaction_id', 'cart__id',
+        'initiator_user__username', 'initiator_user__email',
+    )
     readonly_fields = ('id', 'created_at')
     raw_id_fields = ('cart', 'initiator_user')
 

@@ -182,7 +182,9 @@ class ManualPaymentView(APIView):
         """Reuse the original manual-payment cart before running new-purchase validation."""
         try:
             payment = models.Transaction.objects.select_related('cart').get(
-                gateway=ManualPaymentProcessor.SLUG, gateway_transaction_id=transaction_id,
+                gateway=ManualPaymentProcessor.SLUG,
+                gateway_account=ManualPaymentProcessor.TRANSACTION_ACCOUNT,
+                gateway_transaction_id=transaction_id,
             )
         except models.Transaction.DoesNotExist:
             return handler.validate_item_and_create_cart(user, catalogue_item, cancel_old_carts=False)
@@ -197,11 +199,11 @@ class ManualPaymentView(APIView):
 
         cart = payment.cart
         if (
-            payment.type != models.Transaction.TransactionType.PAYMENT
-            or cart is None
-            or cart.user_id != user.pk
-            or cart.items.count() != 1
-            or not cart.items.filter(catalogue_item=catalogue_item).exists()
+            payment.type != models.Transaction.TransactionType.PAYMENT or
+            cart is None or
+            cart.user_id != user.pk or
+            cart.items.count() != 1 or
+            not cart.items.filter(catalogue_item=catalogue_item).exists()
         ):
             raise InvalidCartError('Recorded payment does not match this learner and course.')
         return cart

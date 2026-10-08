@@ -324,7 +324,7 @@ def test_process_payment_duplicate_transaction(cart):  # pylint: disable=redefin
     result = processor.process_payment_and_update_records(
         cart=cart,
         data={},
-        request=MagicMock(),
+        request=MagicMock(user=cart.user),
         transaction_id=transaction_id,
         transaction_status='SUCCESS',
         method='card',

@@ -12,7 +12,7 @@ from zeitlabs_payments.serializers import CartItemSerializer, CartSerializer, Co
 
 @pytest.mark.django_db
 @patch('zeitlabs_payments.serializers.relative_url_to_absolute_url')
-def test_course_serializer_course_image_exception(mock_relative_url):
+def test_course_serializer_course_image_exception(mock_relative_url, base_data):  # pylint: disable=unused-argument
     course = CourseOverview.objects.get(id='course-v1:org1+1+1')
     mock_request = MagicMock(scheme='https', site=MagicMock(domain='example.com'))
     mock_relative_url.side_effect = ValueError('something went wrong')

@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from django.contrib.auth import get_user_model
 from django.contrib.sites.models import Site
+from django.db import IntegrityError
 from django.db import transaction as db_transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
@@ -40,6 +41,9 @@ class BaseProcessor:
     CHECKOUT_TEXT: str
     PAYMENT_INITIALIZATION_URL: str
     TEMPLATE_NAME: str
+
+    # Stable, non-secret merchant/account namespace; empty preserves legacy processors.
+    TRANSACTION_ACCOUNT = ''
 
     TRANSACTION_STATUS_PENDING = 'pending'
     TRANSACTION_STATUS_SUCCESS = 'success'
@@ -201,18 +205,18 @@ class BaseProcessor:
                 f'Cannot create invoice: Cart {cart.id} is in status "{cart.status}", '
                 f'expected status "{Cart.Status.PAID}".'
             )
-        invoice_values = dict(
-            invoice_number=generate_invoice_number(request),
-            cart=cart,
-            status=Invoice.InvoiceStatus.PAID,
-            gross_total=cart.gross_total,
-            discount_total=cart.discount_total,
-            tax_total=cart.tax_total,
-            total=cart.total,
-            currency=get_currency(cart),
-            paid_at=timezone.now(),
-            related_transaction=transaction_record
-        )
+        invoice_values = {
+            'invoice_number': generate_invoice_number(request),
+            'cart': cart,
+            'status': Invoice.InvoiceStatus.PAID,
+            'gross_total': cart.gross_total,
+            'discount_total': cart.discount_total,
+            'tax_total': cart.tax_total,
+            'total': cart.total,
+            'currency': get_currency(cart),
+            'paid_at': timezone.now(),
+            'related_transaction': transaction_record,
+        }
         # Reuse a recorded invoice after a failed fulfillment attempt. Missing
         # lines from an older, partially created invoice are repaired as well.
         if transaction_record is None:
@@ -239,6 +243,7 @@ class BaseProcessor:
         )
         return invoice
 
+    @db_transaction.atomic
     def handle_payment(  # pylint: disable= too-many-positional-arguments
         self,
         cart: Cart,
@@ -268,23 +273,43 @@ class BaseProcessor:
         :return: Transaction instance.
         :raises DuplicateTransactionError: If transaction with same ID already exists.
         """
-        if Transaction.objects.filter(gateway_transaction_id=transaction_id).exists():
-            logger.warning(f'Duplicate transaction detected while cart: {cart.id} processing.')
-            raise DuplicateTransactionError(f'Transaction already exist with given transaction_id: {transaction_id}')
-        transaction_record = Transaction.objects.create(
-            cart=cart,
-            type=Transaction.TransactionType.PAYMENT,
-            status=transaction_status,
-            gateway=self.SLUG,
-            gateway_transaction_id=transaction_id,
-            method=method,
-            amount=amount,
-            currency=currency,
-            response=response,
-            reason=reason,
-            initiator_user=user,
-            created_at=now(),
-        )
+        cart = Cart.objects.select_for_update().get(pk=cart.pk)
+        scope = {
+            'gateway': self.SLUG,
+            'gateway_account': self.TRANSACTION_ACCOUNT,
+            'gateway_transaction_id': transaction_id,
+        }
+        if cart.status not in (Cart.Status.PENDING, Cart.Status.PROCESSING, Cart.Status.PAYMENT_PENDING):
+            if Transaction.objects.select_for_update().filter(**scope).exists():
+                raise DuplicateTransactionError(f'Transaction already exists with ID: {transaction_id}')
+            raise InvalidCartError('Cannot record a new payment for a completed, cancelled, or refunded cart.')
+        try:
+            # Roll back only the insert's savepoint before checking the winner.
+            # Database uniqueness, rather than a read-before-write check, is
+            # authoritative even when the same payment races on different carts.
+            with db_transaction.atomic():
+                transaction_record = Transaction.objects.create(
+                    cart=cart,
+                    type=Transaction.TransactionType.PAYMENT,
+                    status=transaction_status,
+                    **scope,
+                    method=method,
+                    amount=amount,
+                    currency=currency,
+                    response=response,
+                    reason=reason,
+                    initiator_user=user,
+                    created_at=now(),
+                )
+        except IntegrityError as exc:
+            # Use a locking/current read so the committed winner is visible
+            # even on MySQL with repeatable-read isolation. Other integrity
+            # failures must retain their original error and rollback behavior.
+            if not Transaction.objects.select_for_update().filter(**scope).exists():
+                raise
+            logger.warning('Duplicate payment %s for gateway %s, account %s.',
+                           transaction_id, self.SLUG, self.TRANSACTION_ACCOUNT)
+            raise DuplicateTransactionError(f'Transaction already exists with ID: {transaction_id}') from exc
         logger.info(f'Transaction recorded successfully: {transaction_record.id}')
 
         if record_webhook_event:
@@ -357,6 +382,7 @@ class BaseProcessor:
             return Transaction.objects.get(
                 cart=cart,
                 gateway=self.SLUG,
+                gateway_account=self.TRANSACTION_ACCOUNT,
                 gateway_transaction_id=transaction_id,
                 type=Transaction.TransactionType.PAYMENT,
             )
@@ -379,9 +405,10 @@ class BaseProcessor:
         a database rollback cannot undo a request to another service.
         """
         if (
-            transaction_record.cart_id != cart.pk
-            or transaction_record.gateway != self.SLUG
-            or transaction_record.type != Transaction.TransactionType.PAYMENT
+            transaction_record.cart_id != cart.pk or
+            transaction_record.gateway != self.SLUG or
+            transaction_record.gateway_account != self.TRANSACTION_ACCOUNT or
+            transaction_record.type != Transaction.TransactionType.PAYMENT
         ):
             raise InvalidCartError('Payment transaction does not belong to this cart and processor.')
         if transaction_record.status.casefold() != self.TRANSACTION_STATUS_SUCCESS.casefold():

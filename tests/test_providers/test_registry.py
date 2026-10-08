@@ -2,10 +2,10 @@
 import types
 from unittest.mock import patch
 
-import pkg_resources
 import pytest
 
 from test_utils.dummy_processor import DummyProcessor
+from zeitlabs_payments.providers import registry
 from zeitlabs_payments.providers.registry import PROCESSORS, get_processor, load_entrypoint_processors
 
 
@@ -21,10 +21,10 @@ def make_entry_point(name, cls):
 @patch('zeitlabs_payments.providers.registry.PROCESSORS', new={})
 def test_loads_valid_processor(monkeypatch):
     ep = make_entry_point('dummy', DummyProcessor)
-    monkeypatch.setattr(pkg_resources, 'iter_entry_points', lambda group: [ep])
+    monkeypatch.setattr(registry, 'entry_points', lambda group: [ep])
     load_entrypoint_processors()
-    assert 'dummy' in PROCESSORS
-    assert PROCESSORS['dummy'] is DummyProcessor
+    assert 'dummy' in registry.PROCESSORS
+    assert registry.PROCESSORS['dummy'] is DummyProcessor
 
 
 @patch('zeitlabs_payments.providers.registry.PROCESSORS', new={})
@@ -33,7 +33,7 @@ def test_raises_if_no_slug(monkeypatch):
         pass
 
     ep = make_entry_point('noslug', NoSlugProcessor)
-    monkeypatch.setattr(pkg_resources, 'iter_entry_points', lambda group: [ep])
+    monkeypatch.setattr(registry, 'entry_points', lambda group: [ep])
     with pytest.raises(ValueError, match='must define a SLUG'):
         load_entrypoint_processors()
 

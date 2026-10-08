@@ -5,6 +5,7 @@
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from importlib import import_module
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Barrier
@@ -159,7 +160,7 @@ def run(mode):
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_settings')
     with TemporaryDirectory(prefix='payment-record-race-') as directory:
         if mode == 'mysql':
-            import MySQLdb
+            mysql_client = import_module('MySQLdb')
             database = 'payment_race_' + uuid4().hex
             credentials = {
                 'host': os.environ.get('PAYMENT_MYSQL_HOST', '127.0.0.1'),
@@ -167,7 +168,7 @@ def run(mode):
                 'user': os.environ.get('PAYMENT_MYSQL_USER', 'root'),
                 'passwd': os.environ.get('PAYMENT_MYSQL_PASSWORD', ''),
             }
-            admin = MySQLdb.connect(**credentials)
+            admin = mysql_client.connect(**credentials)
             with admin.cursor() as cursor:
                 cursor.execute(f'CREATE DATABASE `{database}` CHARACTER SET utf8mb4')
             settings.DATABASES = {'default': {

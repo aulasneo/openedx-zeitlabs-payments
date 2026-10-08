@@ -205,18 +205,18 @@ class BaseProcessor:
                 f'Cannot create invoice: Cart {cart.id} is in status "{cart.status}", '
                 f'expected status "{Cart.Status.PAID}".'
             )
-        invoice_values = dict(
-            invoice_number=generate_invoice_number(request),
-            cart=cart,
-            status=Invoice.InvoiceStatus.PAID,
-            gross_total=cart.gross_total,
-            discount_total=cart.discount_total,
-            tax_total=cart.tax_total,
-            total=cart.total,
-            currency=get_currency(cart),
-            paid_at=timezone.now(),
-            related_transaction=transaction_record
-        )
+        invoice_values = {
+            'invoice_number': generate_invoice_number(request),
+            'cart': cart,
+            'status': Invoice.InvoiceStatus.PAID,
+            'gross_total': cart.gross_total,
+            'discount_total': cart.discount_total,
+            'tax_total': cart.tax_total,
+            'total': cart.total,
+            'currency': get_currency(cart),
+            'paid_at': timezone.now(),
+            'related_transaction': transaction_record,
+        }
         # Reuse a recorded invoice after a failed fulfillment attempt. Missing
         # lines from an older, partially created invoice are repaired as well.
         if transaction_record is None:

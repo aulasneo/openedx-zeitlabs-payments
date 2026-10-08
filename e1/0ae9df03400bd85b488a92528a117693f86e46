@@ -1,0 +1,19 @@
+zeitlabs_payments/providers/manual_payment/views.py
+  s_a0b1a3b2b1a834::t_2c0bb8ebc0ccd5 195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e10ae9df03400bd85b488a92528a117693f86e46",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+.github/workflows/ci.yml
+  s_a0b1a3b2b1a834::t_590a97c5d252ba 15
+tests/test_providers/test_registry.py
+  s_a0b1a3b2b1a834::t_56517ed7b7eb5b 8,24,26-27,36
+zeitlabs_payments/providers/registry.py
+  s_a0b1a3b2b1a834::t_24927314f9e872 2,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "044ebe5292e915484efd8dfedca2bf3102f5ab05",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

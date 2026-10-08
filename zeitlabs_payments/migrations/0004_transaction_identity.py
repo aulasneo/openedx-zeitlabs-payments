@@ -1,9 +1,11 @@
 """Enforce payment identity without discarding legacy financial records."""
 
+from django.apps.registry import Apps
 from django.db import migrations, models
+from django.db.backends.base.schema import BaseDatabaseSchemaEditor
 
 
-def check_legacy_duplicates(apps, schema_editor):
+def check_legacy_duplicates(apps: Apps, schema_editor: BaseDatabaseSchemaEditor) -> None:
     """Stop before any DDL when existing gateway IDs require reconciliation."""
     transaction_model = apps.get_model('zeitlabs_payments', 'Transaction')
     duplicates = list(

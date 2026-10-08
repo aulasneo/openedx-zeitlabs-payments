@@ -53,6 +53,7 @@ class ManualPaymentProcessor(BaseProcessor):
         :return: dict with created_cart and created_invoice
         :raises Exception: if anything fails
         """
+        transaction_status = self.require_successful_payment(transaction_status)
         with transaction.atomic():
             cart = Cart.objects.select_for_update().get(pk=cart.pk)
             if cart.status == Cart.Status.PAID:

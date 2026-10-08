@@ -116,7 +116,7 @@ class TestManualPaymentView(APITestCase):
             'course_key': self.course_id,
             'mode': self.mode_slug,
             'transaction_id': 'does not matter',
-            'transaction_status': 'does not maatter'
+            'transaction_status': 'success'
         }
 
         self.login_user(self.admin_user)
@@ -140,7 +140,7 @@ class TestManualPaymentView(APITestCase):
             'course_key': 'invlaid-course-id',
             'mode': self.mode_slug,
             'transaction_id': 'does not matter',
-            'transaction_status': 'does not maatter'
+            'transaction_status': 'success'
         }
         response = self.client.post(self.url, data=payload, format='json')
         assert response.status_code == 400
@@ -156,7 +156,7 @@ class TestManualPaymentView(APITestCase):
             'course_key': 'course-v1:notexist+1+1',
             'mode': self.mode_slug,
             'transaction_id': 'does not matter',
-            'transaction_status': 'does not maatter'
+            'transaction_status': 'success'
         }
         response = self.client.post(self.url, data=payload, format='json')
         assert response.status_code == 400
@@ -178,7 +178,7 @@ class TestManualPaymentView(APITestCase):
             'course_key': 'course-v1:org1+1+1',
             'mode': self.mode_slug,
             'transaction_id': 'does not matter',
-            'transaction_status': 'does not maatter'
+            'transaction_status': 'success'
         }
         response = self.client.post(self.url, data=payload, format='json')
         assert response.status_code == 400
@@ -196,7 +196,7 @@ class TestManualPaymentView(APITestCase):
             'course_key': self.course_id,
             'mode': self.mode_slug,
             'transaction_id': 'does not matter',
-            'transaction_status': 'does not maatter'
+            'transaction_status': 'success'
         }
 
         related_course_item = CatalogueItem.objects.get(sku='custom-sku-1')
@@ -223,7 +223,7 @@ class TestManualPaymentView(APITestCase):
             'course_key': self.course_id,
             'mode': self.mode_slug,
             'transaction_id': 'does not matter',
-            'transaction_status': 'does not maatter'
+            'transaction_status': 'success'
         }
         response = self.client.post(self.url, data=payload, format='json')
         assert response.status_code == 400

@@ -1,6 +1,7 @@
 """Base processor."""
 
 import logging
+from enum import Enum
 from typing import Any, Optional
 
 from django.contrib.auth import get_user_model
@@ -19,6 +20,7 @@ from zeitlabs_payments.exceptions import (
     DuplicateTransactionError,
     GatewayError,
     InvalidCartError,
+    InvalidPaymentStatusError,
     InvoiceError,
 )
 from zeitlabs_payments.helpers import (
@@ -31,6 +33,15 @@ from zeitlabs_payments.helpers import (
 from zeitlabs_payments.models import AuditLog, Cart, Invoice, InvoiceItem, Transaction, WebhookEvent
 
 logger = logging.getLogger(__name__)
+
+
+class PaymentOutcome(str, Enum):
+    """Normalized outcomes accepted at the shared payment boundary."""
+
+    SUCCESS = 'success'
+    PENDING = 'pending'
+    FAILED = 'failed'
+    UNKNOWN = 'unknown'
 
 
 class BaseProcessor:
@@ -47,6 +58,31 @@ class BaseProcessor:
 
     TRANSACTION_STATUS_PENDING = 'pending'
     TRANSACTION_STATUS_SUCCESS = 'success'
+    TRANSACTION_STATUS_FAILED = 'failed'
+
+    def normalize_payment_status(self, transaction_status: str) -> PaymentOutcome:
+        """Map explicit provider statuses to canonical outcomes; fail closed on other values."""
+        if not isinstance(transaction_status, str):
+            return PaymentOutcome.UNKNOWN
+        statuses = {
+            PaymentOutcome.SUCCESS.value: PaymentOutcome.SUCCESS,
+            PaymentOutcome.PENDING.value: PaymentOutcome.PENDING,
+            PaymentOutcome.FAILED.value: PaymentOutcome.FAILED,
+        }
+        for alias, outcome in (
+            (self.TRANSACTION_STATUS_PENDING, PaymentOutcome.PENDING),
+            (self.TRANSACTION_STATUS_FAILED, PaymentOutcome.FAILED),
+            (self.TRANSACTION_STATUS_SUCCESS, PaymentOutcome.SUCCESS),
+        ):
+            if isinstance(alias, str) and alias.strip():
+                statuses[alias.strip().casefold()] = outcome
+        return statuses.get(transaction_status.strip().casefold(), PaymentOutcome.UNKNOWN)
+
+    def require_successful_payment(self, transaction_status: str) -> str:
+        """Reject unconfirmed outcomes before recording or recovering a purchase."""
+        if self.normalize_payment_status(transaction_status) != PaymentOutcome.SUCCESS:
+            raise InvalidPaymentStatusError('Only confirmed successful payments can be processed.')
+        return PaymentOutcome.SUCCESS.value
 
     @classmethod
     def get_payment_method_metadata(cls, cart: Cart) -> dict:
@@ -262,7 +298,7 @@ class BaseProcessor:
 
         :param cart: The cart being paid for.
         :param user: The user making the payment.
-        :param transaction_status: Status of the transaction (e.g., 'success', 'failed').
+        :param transaction_status: Confirmed success status, canonical or explicitly mapped by the provider.
         :param transaction_id: Unique identifier from the payment gateway.
         :param method: Payment method used (e.g., 'credit_card', 'bank_transfer').
         :param amount: Payment amount as string.
@@ -273,6 +309,7 @@ class BaseProcessor:
         :return: Transaction instance.
         :raises DuplicateTransactionError: If transaction with same ID already exists.
         """
+        transaction_status = self.require_successful_payment(transaction_status)
         cart = Cart.objects.select_for_update().get(pk=cart.pk)
         scope = {
             'gateway': self.SLUG,
@@ -411,7 +448,7 @@ class BaseProcessor:
             transaction_record.type != Transaction.TransactionType.PAYMENT
         ):
             raise InvalidCartError('Payment transaction does not belong to this cart and processor.')
-        if transaction_record.status.casefold() != self.TRANSACTION_STATUS_SUCCESS.casefold():
+        if self.normalize_payment_status(transaction_record.status) != PaymentOutcome.SUCCESS:
             AuditLog.log(
                 action=AuditLog.AuditActions.INVALID_TRANSACTION,
                 cart=cart,
@@ -490,6 +527,7 @@ class BaseProcessor:
                 return None
 
         try:
+            transaction_status = self.require_successful_payment(transaction_status)
             with db_transaction.atomic():
                 cart = Cart.objects.select_for_update().get(pk=cart.pk)
                 if cart.status == Cart.Status.PAID:
@@ -527,6 +565,16 @@ class BaseProcessor:
                         response=data,
                         record_webhook_event=record_webhook_event,
                     )
+
+        except InvalidPaymentStatusError:
+            AuditLog.log(
+                action=AuditLog.AuditActions.INVALID_TRANSACTION,
+                cart=cart,
+                gateway=self.SLUG,
+                context={'transaction_id': transaction_id, 'status': transaction_status},
+            )
+            logger.warning('Rejected unconfirmed payment %s for cart %s.', transaction_id, cart.pk)
+            return None
 
         except DuplicateTransactionError:
             AuditLog.log(

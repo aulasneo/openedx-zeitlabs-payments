@@ -192,6 +192,7 @@ class ManualPaymentView(APIView):
                 gateway=ManualPaymentProcessor.SLUG,
                 context={'transaction_id': transaction_id, 'reason': 'ambiguous'},
             )
+            logger.warning('Cannot recover manual payment %s: recorded payment is ambiguous.', transaction_id)
             raise InvalidCartError('Multiple recorded payments match this transaction ID.') from exc
 
         cart = payment.cart

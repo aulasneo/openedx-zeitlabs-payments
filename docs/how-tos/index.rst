@@ -173,7 +173,7 @@ explicitly (two for SAR/USD/BRL, zero or three where required by the API):
     # Record confirmed_amount in major units, after validating the response.
 
 External processor compatibility
--------------------------------
+--------------------------------
 
 This changes the shared ``amount`` type from an integer rounded to major
 units to Decimal major units. Review and upgrade installed external adapters

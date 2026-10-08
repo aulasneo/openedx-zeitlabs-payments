@@ -141,7 +141,7 @@ def test_get_transaction_parameters_base(cart):  # pylint: disable=redefined-out
     result = processor.get_transaction_parameters_base(cart, request)
     assert result['user_email'] == 'user3@example.com'
     assert result['language'] == 'en'
-    assert result['amount'] == int(cart.total)
+    assert result['amount'] == cart.total
     assert result['order_reference'] == f'{cart.id}-{request.site.id}'
     assert result['currency'] == cart.items.all()[0].catalogue_item.currency
 

@@ -319,6 +319,11 @@ Zeitlabs Payments will automatically discover and load all processors defined un
 Reference Implementation
 ========================
 
+The shared transaction ``amount`` is a ``Decimal`` in major currency units.
+Each processor must explicitly serialize it before signing/submitting a
+payment. See ``docs/how-tos/index.rst`` for exact conversion helpers and the
+required PayFort adapter update when upgrading this package.
+
 We have already built a working PayFort plugin, which you can use as a reference to create your own gateway:
 https://github.com/zeit-labs/zeitlabs-payfort
 

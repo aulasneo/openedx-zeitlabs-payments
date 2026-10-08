@@ -11,7 +11,16 @@ There should always be an "Unreleased" section for changes pending release.
 
 ## [Unreleased]
 
--
+### Fixed
+
+- Preserve fractional cart totals as Decimal in shared transaction parameters.
+- Add exact provider precision and integer minor-unit conversion helpers.
+
+### Changed
+
+- Provider adapters must serialize the shared Decimal amount before signing or
+  submitting it. Coordinate upgrades with external processors, especially
+  PayFort, which must convert its amount to an integer after scaling.
 
 [0.1.4] – 2025-11-30
 **********************************************

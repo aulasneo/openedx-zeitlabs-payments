@@ -1,6 +1,6 @@
 """Regression tests for exact checkout and provider amounts."""
 
-from decimal import Decimal
+from decimal import Decimal, Inexact, Rounded, localcontext
 from unittest.mock import patch
 
 import pytest
@@ -42,7 +42,7 @@ def test_provider_serialization(value, places, formatted, minor):
 @pytest.mark.parametrize('value,places', [
     ('99.901', 2), ('10.01', 0), ('-0.50', 2),
     ('NaN', 2), ('sNaN', 2), ('Infinity', 2), ('-Infinity', 2),
-    ('1E100', 2), ('10.01', -1), ('10.01', 2.0), ('10.01', True),
+    ('10.01', -1), ('10.01', 2.0), ('10.01', True),
 ])
 @pytest.mark.parametrize('convert', [quantize_amount, amount_to_minor_units])
 def test_provider_serialization_rejects_invalid_amounts(value, places, convert):
@@ -57,6 +57,24 @@ def test_provider_serialization_requires_decimal(value, convert):
     """Float conversion must not introduce binary arithmetic into payments."""
     with pytest.raises(TypeError):
         convert(value, 2)
+
+
+def test_provider_serialization_ignores_host_decimal_context():
+    """Exact amounts work with low precision and strict rounding traps."""
+    large_amount = Decimal('1234567890123456789012345678.95')
+    with localcontext() as context:
+        context.prec = 3
+        context.Emax = 9
+        context.Emin = -9
+        context.traps[Inexact] = True
+        context.traps[Rounded] = True
+
+        assert quantize_amount(large_amount, 2) == large_amount
+        assert amount_to_minor_units(large_amount, 2) == 123456789012345678901234567895
+        assert quantize_amount(Decimal('10.01'), 2) == Decimal('10.01')
+        assert amount_to_minor_units(Decimal('10.01'), 2) == 1001
+        with pytest.raises(ValueError, match='exceeds provider precision'):
+            quantize_amount(Decimal('10.011'), 2)
 
 
 @pytest.fixture

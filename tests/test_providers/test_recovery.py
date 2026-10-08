@@ -178,15 +178,17 @@ def test_paid_cart_requires_matching_recorded_payment(payment, mismatch):  # pyl
         record.cart = Cart.objects.create(user=cart.user, status=Cart.Status.PAID)
     elif mismatch == 'type':
         record.type = Transaction.TransactionType.REFUND
+    if mismatch == 'ambiguous':
+        # The database now prevents new duplicates; retain the defensive
+        # recovery behavior for a corrupt/legacy lookup result.
+        with patch.object(Transaction.objects, 'get', side_effect=Transaction.MultipleObjectsReturned):
+            assert processor.process_payment_and_update_records(**params) is None
     else:
-        record.pk = None
-    record.save()
-    assert processor.process_payment_and_update_records(**params) is None
+        record.save()
+        assert processor.process_payment_and_update_records(**params) is None
     assert not Invoice.objects.filter(cart=cart).exists()
     assert not CourseEnrollment.objects.filter(user=cart.user).exists()
-    assert Transaction.objects.filter(gateway_transaction_id='recovery-payment').count() == (
-        2 if mismatch == 'ambiguous' else 1
-    )
+    assert Transaction.objects.filter(gateway_transaction_id='recovery-payment').count() == 1
     assert not AuditLog.objects.filter(cart=cart, action=AuditLog.AuditActions.TRANSACTION_ROLLED_BACK).exists()
     audit = AuditLog.objects.get(cart=cart, action=AuditLog.AuditActions.RECOVERY_PAYMENT_LOOKUP_FAILED)
     assert ('ambiguous' if mismatch == 'ambiguous' else 'missing') in audit.details
@@ -355,11 +357,12 @@ def test_manual_api_rejects_invalid_recovery(manual_api, mismatch):  # pylint: d
         payload['course_key'] = 'course-v1:org2+1+1'
     elif mismatch == 'refunded':
         Cart.objects.filter(user_id=3).update(status=Cart.Status.REFUNDED)
+    if mismatch == 'ambiguous':
+        with patch.object(Transaction.objects, 'select_related') as lookup:
+            lookup.return_value.get.side_effect = Transaction.MultipleObjectsReturned
+            assert client.post(url, payload).status_code == 400
     else:
-        record = Transaction.objects.get(gateway_transaction_id=payload['transaction_id'])
-        record.pk = None
-        record.save()
-    assert client.post(url, payload).status_code == 400
+        assert client.post(url, payload).status_code == 400
     assert Cart.objects.count() == count
 
     if mismatch == 'ambiguous':

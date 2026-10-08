@@ -38,3 +38,35 @@ jobs:
       #     token: ${{ secrets.CODECOV_TOKEN }}
       #     flags: unittests
       #     fail_ci_if_error: true
+
+  payment_concurrency:
+    name: payment concurrency (MySQL)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install MySQL build dependencies
+        run: sudo apt-get update && sudo apt-get install -y default-libmysqlclient-dev pkg-config
+      - name: Install tox
+        run: pip install -r requirements/ci.in
+      - name: Race payment recording and fulfillment on InnoDB
+        env:
+          PAYMENT_MYSQL_HOST: 127.0.0.1
+          PAYMENT_MYSQL_PORT: "3306"
+          PAYMENT_MYSQL_USER: root
+        run: tox -e mysql-concurrency

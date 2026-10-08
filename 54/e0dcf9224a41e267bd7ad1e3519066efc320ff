@@ -1,0 +1,43 @@
+.github/workflows/ci.yml
+  s_a0b1a3b2b1a834::t_98cae1b8e2a408 41-72
+docs/how-tos/index.rst
+  s_a0b1a3b2b1a834::t_72d821f0b1f7d0 76-122
+test_utils/transaction_races.py
+  s_a0b1a3b2b1a834::t_5743d6980beaec 1-197
+tests/test_providers/test_base.py
+  s_a0b1a3b2b1a834::t_438b455d26b25d 327
+tests/test_providers/test_recovery.py
+  s_a0b1a3b2b1a834::t_0aec4413cb1269 181-185,187-188,191,360-363,365
+tests/test_transaction_concurrency.py
+  s_a0b1a3b2b1a834::t_299474cafe11d9 1-20
+tests/test_transaction_identity.py
+  s_a0b1a3b2b1a834::t_1fba3fa7d3fc3d 1-140
+tox.ini
+  s_a0b1a3b2b1a834::t_b4e73016f46960 112-123
+zeitlabs_payments/admin.py
+  s_a0b1a3b2b1a834::t_f288dc65815c16 58,67-70
+zeitlabs_payments/migrations/0004_transaction_identity.py
+  s_a0b1a3b2b1a834::t_f1718fd62e1a86 1-43
+zeitlabs_payments/models.py
+  s_a0b1a3b2b1a834::t_9640eeb55f8e26 80,91-98
+zeitlabs_payments/providers/base.py
+  s_a0b1a3b2b1a834::t_b8124d98cd6ff4 8,45-47,246,276-312,385,410
+zeitlabs_payments/providers/manual_payment/views.py
+  s_a0b1a3b2b1a834::t_95d947fe65c061 185-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "54e0dcf9224a41e267bd7ad1e3519066efc320ff",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+CHANGELOG.md
+  s_e9dd6b6aeee8b0::t_880e90ddd92608 14-23
+README.rst
+  s_e9dd6b6aeee8b0::t_880e90ddd92608 322-326
+tests/test_providers/test_base.py
+  s_e9dd6b6aeee8b0::t_7417dae9dd089a 144
+zeitlabs_payments/amounts.py
+  s_e9dd6b6aeee8b0::t_7417dae9dd089a 1-6,9-30
+  s_e9dd6b6aeee8b0::t_86f5a08aafdf74 7-8
+tests/test_amounts.py
+  s_e9dd6b6aeee8b0::t_acf64ed65b58af 4,141-142
+  s_e9dd6b6aeee8b0::t_a1d6067e489ff0 1-3,5-96,100-140,143-144
+  s_e9dd6b6aeee8b0::t_f5ae6f6c5c5846 97-99
+docs/how-tos/index.rst
+  s_e9dd6b6aeee8b0::t_880e90ddd92608 124-201
+zeitlabs_payments/providers/base.py
+  s_e9dd6b6aeee8b0::t_7417dae9dd089a 125-127,132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e170886cad43e9d19f9891e43b1aa322c6ad555d",
+  "prompts": {},
+  "sessions": {
+    "s_e9dd6b6aeee8b0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11bac-c3b9-7783-b599-1c6240d39d5d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

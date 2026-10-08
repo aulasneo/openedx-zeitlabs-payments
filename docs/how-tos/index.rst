@@ -48,7 +48,8 @@ Initiate a payment safely
 
 Submit a CSRF-protected POST to the URL returned in payment-method metadata.
 The built-in checkout renders a separate POST form for each payment method.
-GET requests to the initiation URL return HTTP 405 and cannot start a payment.
+Authenticated GET requests to the initiation URL return HTTP 405. Anonymous
+GET requests redirect to login. Neither can start a payment.
 Custom checkout clients must submit the CSRF token with their POST request.
 
 Only a pending cart owned by the authenticated learner can start a payment.
@@ -59,8 +60,10 @@ cancelled, and refunded carts cannot be restarted through this endpoint.
 
 Initialization exceptions return HTTP 502 and an error page with the cart
 reference. Processor error responses are recorded as initialization failures,
-not successful redirects. The cart remains processing: an external order may
-have been accepted even if the response timed out or could not be rendered.
+not successful redirects. The cart remains processing unless a callback has
+already changed its status; that updated status is preserved even when
+initialization fails. An external order may have been accepted even if the
+response timed out or could not be rendered.
 There is no automatic reset or retry. Support must reconcile the cart with the
 gateway before allowing another payment, including when a process stops after
 claiming the cart. Do not create a replacement purchase until the first

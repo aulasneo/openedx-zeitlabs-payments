@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.http import HttpResponse
 from django.test import Client
 from django.urls import resolve, reverse
@@ -147,16 +148,19 @@ def test_initialization_failure_blocks_blind_retries(purchase, failure):  # pyli
     gateway.assert_not_called()
 
 
-def test_callback_status_is_not_overwritten_after_initialization(purchase):  # pylint: disable=redefined-outer-name
+@pytest.mark.parametrize('initialization_status', [200, 502])
+def test_callback_status_is_not_overwritten_after_initialization(
+    purchase, initialization_status,  # pylint: disable=redefined-outer-name
+):
     """A fast callback can finish payment while initialization is still returning."""
     client, cart, url = purchase
 
     def initiate(**_kwargs):
         Cart.objects.filter(pk=cart.pk).update(status=Cart.Status.PAID)
-        return HttpResponse('gateway')
+        return HttpResponse('gateway', status=initialization_status)
 
     with patch.object(DummyProcessor, 'payment_view', side_effect=initiate):
-        assert client.post(url).status_code == 200
+        assert client.post(url).status_code == initialization_status
     cart.refresh_from_db()
     assert cart.status == Cart.Status.PAID
 
@@ -165,3 +169,16 @@ def test_atomic_requests_does_not_wrap_initiation(purchase):  # pylint: disable=
     """Django must commit the claim before an external request even with ATOMIC_REQUESTS enabled."""
     _, _, url = purchase
     assert 'default' in resolve(url).func._non_atomic_requests  # pylint: disable=protected-access
+
+
+def test_enclosing_transaction_cannot_start_external_payment(purchase):  # pylint: disable=redefined-outer-name
+    """Reject a rollbackable claim before creating an irreversible gateway order."""
+    client, cart, url = purchase
+    with patch.object(DummyProcessor, 'payment_view') as gateway:
+        with transaction.atomic():
+            with pytest.raises(RuntimeError, match='durable atomic block cannot be nested'):
+                client.post(url)
+        gateway.assert_not_called()
+    cart.refresh_from_db()
+    assert cart.status == Cart.Status.PENDING
+    assert not AuditLog.objects.filter(cart=cart).exists()

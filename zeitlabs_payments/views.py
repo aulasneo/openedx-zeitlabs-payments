@@ -142,6 +142,8 @@ class InitiatePaymentView(LoginRequiredMixin, View):
 
         # Commit the claim before any external request. A conditional update
         # admits only one request, including when get_cart returned stale data.
+        # Reject caller-owned transactions: their rollback could erase the
+        # claim after the gateway has already created an order.
         with db_transaction.atomic(durable=True):
             claimed = models.Cart.objects.filter(
                 pk=cart.pk, user=request.user, status=models.Cart.Status.PENDING,

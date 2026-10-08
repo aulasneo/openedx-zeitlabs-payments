@@ -199,11 +199,11 @@ class ManualPaymentView(APIView):
 
         cart = payment.cart
         if (
-            payment.type != models.Transaction.TransactionType.PAYMENT
-            or cart is None
-            or cart.user_id != user.pk
-            or cart.items.count() != 1
-            or not cart.items.filter(catalogue_item=catalogue_item).exists()
+            payment.type != models.Transaction.TransactionType.PAYMENT or
+            cart is None or
+            cart.user_id != user.pk or
+            cart.items.count() != 1 or
+            not cart.items.filter(catalogue_item=catalogue_item).exists()
         ):
             raise InvalidCartError('Recorded payment does not match this learner and course.')
         return cart

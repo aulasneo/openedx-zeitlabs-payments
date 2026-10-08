@@ -405,10 +405,10 @@ class BaseProcessor:
         a database rollback cannot undo a request to another service.
         """
         if (
-            transaction_record.cart_id != cart.pk
-            or transaction_record.gateway != self.SLUG
-            or transaction_record.gateway_account != self.TRANSACTION_ACCOUNT
-            or transaction_record.type != Transaction.TransactionType.PAYMENT
+            transaction_record.cart_id != cart.pk or
+            transaction_record.gateway != self.SLUG or
+            transaction_record.gateway_account != self.TRANSACTION_ACCOUNT or
+            transaction_record.type != Transaction.TransactionType.PAYMENT
         ):
             raise InvalidCartError('Payment transaction does not belong to this cart and processor.')
         if transaction_record.status.casefold() != self.TRANSACTION_STATUS_SUCCESS.casefold():

@@ -122,11 +122,14 @@ class BaseProcessor:
     ) -> dict:
         """
         Generate base parameters required for the transaction signature.
+
+        Amount is a Decimal in major currency units. Each provider must serialize
+        it to its required wire format before signing or submitting parameters.
         """
         return {
             'language': get_language(request),
             'order_reference': get_merchant_reference(request.site.id, cart),
-            'amount': int(round(cart.total, 0)),
+            'amount': cart.total,
             'currency': get_currency(cart),
             'user_email': cart.user.email,
             'order_description': get_order_description(cart),

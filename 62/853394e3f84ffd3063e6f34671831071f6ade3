@@ -1,0 +1,25 @@
+test_utils/transaction_races.py
+  s_a0b1a3b2b1a834::t_b133d209faae6d 8,163,171
+zeitlabs_payments/providers/base.py
+  s_a0b1a3b2b1a834::t_9253de2d82f0be 208-219
+zeitlabs_payments/providers/manual_payment/processor.py
+  s_a0b1a3b2b1a834::t_876ea72abc0052 40
+zeitlabs_payments/serializers.py
+  s_a0b1a3b2b1a834::t_74c8e218f7d2da 164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "62853394e3f84ffd3063e6f34671831071f6ade3",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

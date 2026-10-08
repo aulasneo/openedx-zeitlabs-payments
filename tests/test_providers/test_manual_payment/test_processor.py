@@ -11,6 +11,7 @@ User = get_user_model()
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures('base_data')
 class TestManualPaymentProcessor:
     """
     Tests for ManualPaymentProcessor.process_payment.

@@ -146,7 +146,7 @@ class ManualPaymentView(APIView):
             )
 
         try:
-            cart = handler.validate_item_and_create_cart(user, course_catalog_item, cancel_old_carts=False)
+            cart = self._get_payment_cart(user, course_catalog_item, request.data['transaction_id'], handler)
         except InvalidCartError as exc:
             return Response(
                 {
@@ -175,3 +175,33 @@ class ManualPaymentView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    def _get_payment_cart(
+        self, user: Any, catalogue_item: models.CatalogueItem, transaction_id: str, handler: Any
+    ) -> models.Cart:
+        """Reuse the original manual-payment cart before running new-purchase validation."""
+        try:
+            payment = models.Transaction.objects.select_related('cart').get(
+                gateway=ManualPaymentProcessor.SLUG, gateway_transaction_id=transaction_id,
+            )
+        except models.Transaction.DoesNotExist:
+            return handler.validate_item_and_create_cart(user, catalogue_item, cancel_old_carts=False)
+        except models.Transaction.MultipleObjectsReturned as exc:
+            models.AuditLog.log(
+                action=models.AuditLog.AuditActions.RECOVERY_PAYMENT_LOOKUP_FAILED,
+                gateway=ManualPaymentProcessor.SLUG,
+                context={'transaction_id': transaction_id, 'reason': 'ambiguous'},
+            )
+            logger.warning('Cannot recover manual payment %s: recorded payment is ambiguous.', transaction_id)
+            raise InvalidCartError('Multiple recorded payments match this transaction ID.') from exc
+
+        cart = payment.cart
+        if (
+            payment.type != models.Transaction.TransactionType.PAYMENT
+            or cart is None
+            or cart.user_id != user.pk
+            or cart.items.count() != 1
+            or not cart.items.filter(catalogue_item=catalogue_item).exists()
+        ):
+            raise InvalidCartError('Recorded payment does not match this learner and course.')
+        return cart

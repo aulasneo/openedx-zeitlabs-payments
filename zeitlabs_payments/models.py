@@ -36,6 +36,7 @@ class Cart(TimeStampedModel):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='carts')
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    fulfilled_at = models.DateTimeField(null=True, blank=True, editable=False)
 
     @property
     def total(self) -> Decimal:
@@ -112,6 +113,7 @@ class AuditLog(TimeStampedModel):
         RECEIVED_RESPONSE = 'received_gateway_response'
         RESPONSE_INVALID_CART = 'response_for_invalid_cart'
         TRANSACTION_ROLLED_BACK = 'transaction_rolled_back'
+        RECOVERY_PAYMENT_LOOKUP_FAILED = 'recovery_payment_lookup_failed'
         INVALID_TRANSACTION = 'invalid_transaction'
         CART_STATUS_UPDATED = 'cart_status_updated'
         CART_FULFILLED = 'cart_fulfilled'
@@ -141,6 +143,9 @@ class AuditLog(TimeStampedModel):
         ),
         AuditActions.TRANSACTION_ROLLED_BACK: (
             'Transaction: {transaction_id} for cart: {cart_id} and site: {site_id} rolled back.'
+        ),
+        AuditActions.RECOVERY_PAYMENT_LOOKUP_FAILED: (
+            'Recovery rejected: recorded payment {transaction_id} is {reason}.'
         ),
         AuditActions.INVALID_TRANSACTION: (
             'Transaction: {transaction_id} is in invalid state: {status}.'
@@ -258,6 +263,7 @@ class CartItem(TimeStampedModel):
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True)
     final_price = models.DecimalField(max_digits=10, decimal_places=2)
+    fulfilled_at = models.DateTimeField(null=True, blank=True, editable=False)
 
 
 class Invoice(TimeStampedModel):

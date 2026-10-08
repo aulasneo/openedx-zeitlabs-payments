@@ -68,10 +68,14 @@ class BaseProcessor:
             PaymentOutcome.SUCCESS.value: PaymentOutcome.SUCCESS,
             PaymentOutcome.PENDING.value: PaymentOutcome.PENDING,
             PaymentOutcome.FAILED.value: PaymentOutcome.FAILED,
-            self.TRANSACTION_STATUS_PENDING.strip().casefold(): PaymentOutcome.PENDING,
-            self.TRANSACTION_STATUS_FAILED.strip().casefold(): PaymentOutcome.FAILED,
-            self.TRANSACTION_STATUS_SUCCESS.strip().casefold(): PaymentOutcome.SUCCESS,
         }
+        for alias, outcome in (
+            (self.TRANSACTION_STATUS_PENDING, PaymentOutcome.PENDING),
+            (self.TRANSACTION_STATUS_FAILED, PaymentOutcome.FAILED),
+            (self.TRANSACTION_STATUS_SUCCESS, PaymentOutcome.SUCCESS),
+        ):
+            if isinstance(alias, str) and alias.strip():
+                statuses[alias.strip().casefold()] = outcome
         return statuses.get(transaction_status.strip().casefold(), PaymentOutcome.UNKNOWN)
 
     def require_successful_payment(self, transaction_status: str) -> str:

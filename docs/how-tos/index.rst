@@ -134,7 +134,9 @@ and unrecognized names map to ``unknown``; values such as ``paid`` or
 Providers can set ``TRANSACTION_STATUS_SUCCESS``,
 ``TRANSACTION_STATUS_PENDING``, and ``TRANSACTION_STATUS_FAILED`` to their
 external status names. Canonical names remain accepted, and new successful
-records always store ``success``. Recovery accepts existing provider-specific
+records always store ``success``. Blank or non-string configured aliases are
+ignored, so missing confirmation always remains unknown.
+Recovery accepts existing provider-specific
 success records using the same mapping, but never replaces a recorded failed
 or pending result with a successful retry payload.
 

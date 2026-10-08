@@ -155,7 +155,7 @@ def test_handle_payment_for_duplicate_transaction(cart):  # pylint: disable=rede
         amount=500,
     )
     with pytest.raises(DuplicateTransactionError):
-        processor.handle_payment(cart, cart.user, 'anything', 'already-there', 'dummy', '500', 'usd', 'any reason')
+        processor.handle_payment(cart, cart.user, 'success', 'already-there', 'dummy', '500', 'usd', 'any reason')
 
 
 @pytest.mark.django_db
@@ -357,7 +357,7 @@ def test_process_payment_handle_payment_exception(mock_handle_payment, cart):  #
         data={},
         request=MagicMock(),
         transaction_id='t3',
-        transaction_status='FAILED',
+        transaction_status='SUCCESS',
         method='card',
         amount='10',
         currency='USD',

@@ -120,3 +120,47 @@ locally against an explicitly supplied test MySQL server, configure
 ``PAYMENT_MYSQL_PASSWORD``, then run ``tox -e mysql-concurrency``. The test user
 needs permission to create/drop disposable databases; the runner creates a
 uniquely named schema and removes it afterward.
+
+Validate a payment outcome
+==========================
+
+The shared processing boundary accepts only a confirmed successful payment.
+``PaymentOutcome`` defines ``success``, ``pending``, ``failed``, and ``unknown``.
+``BaseProcessor.normalize_payment_status()`` matches explicit status names
+case-insensitively after trimming surrounding whitespace. Non-string values
+and unrecognized names map to ``unknown``; values such as ``paid`` or
+``authorized`` are not implicitly treated as success.
+
+Providers can set ``TRANSACTION_STATUS_SUCCESS``,
+``TRANSACTION_STATUS_PENDING``, and ``TRANSACTION_STATUS_FAILED`` to their
+external status names. Canonical names remain accepted, and new successful
+records always store ``success``. Recovery accepts existing provider-specific
+success records using the same mapping, but never replaces a recorded failed
+or pending result with a successful retry payload.
+
+``handle_payment()`` and the manual processor raise
+``InvalidPaymentStatusError`` for any unconfirmed outcome before changing the
+cart or recording a transaction. ``process_payment_and_update_records()``
+returns ``None`` and records an ``invalid_transaction`` audit instead.
+It validates retry payloads too, even when the cart is already paid.
+These helpers reject pending and failed outcomes rather than recording them
+as payments. No transaction, webhook, paid invoice, or enrollment is created,
+and the cart retains its current status. A subsequent confirmed success can
+use the same external ID because rejection did not consume its identity.
+
+The staff-only manual API applies the same success check before creating or
+looking up a cart. Unconfirmed and unknown values return HTTP 400; a missing
+or empty status remains a missing required parameter. A successful manual
+request or retry must include ``transaction_status: "success"`` (case and
+surrounding whitespace are normalized).
+
+Status normalization does not authenticate a callback or verify payment
+amounts. Provider adapters must verify their gateway's confirmation before
+passing a successful status. For the planned FGV integration, verified invoice
+confirmation must be explicitly mapped to ``success`` before invoking the
+shared helper; an unconfirmed invoice cannot trigger fulfillment. This
+repository does not yet include an FGV provider or its confirmation mapping.
+
+For historical carts marked paid with an unsuccessful recorded transaction,
+recovery refuses invoice creation and enrollment. Reconcile such records
+against the gateway; changing only the retry payload cannot repair them.

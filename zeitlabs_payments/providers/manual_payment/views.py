@@ -13,7 +13,7 @@ from rest_framework.views import APIView
 
 from zeitlabs_payments import models
 from zeitlabs_payments.cart_handler import CART_HANDLER
-from zeitlabs_payments.exceptions import InvalidCartError
+from zeitlabs_payments.exceptions import InvalidCartError, InvalidPaymentStatusError
 from zeitlabs_payments.providers.manual_payment.processor import ManualPaymentProcessor
 
 logger = logging.getLogger(__name__)
@@ -110,6 +110,12 @@ class ManualPaymentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        processor = ManualPaymentProcessor()
+        try:
+            transaction_status = processor.require_successful_payment(request.data['transaction_status'])
+        except InvalidPaymentStatusError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         user = self._get_user(request.data)
         if not user:
             return Response(
@@ -156,13 +162,12 @@ class ManualPaymentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        processor = ManualPaymentProcessor()
         try:
             result = processor.process_payment(
                 request,
                 cart,
                 request.data['transaction_id'],
-                request.data['transaction_status'],
+                transaction_status,
                 request.data.get('reason')
             )
             return Response(result, status=status.HTTP_201_CREATED)

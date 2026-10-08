@@ -23,3 +23,7 @@ class InvoiceError(Exception):
 
 class DuplicateTransactionError(Exception):
     """TRansaction already exist for given cart."""
+
+
+class InvalidPaymentStatusError(Exception):
+    """Payment status does not confirm a successful payment."""

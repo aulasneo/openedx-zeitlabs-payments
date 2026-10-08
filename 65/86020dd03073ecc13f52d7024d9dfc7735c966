@@ -1,0 +1,23 @@
+zeitlabs_payments/cart_handler.py
+  s_a0b1a3b2b1a834::t_6e2c5e1fac2c1c 21
+zeitlabs_payments/migrations/0003_fulfillment_tracking.py
+  s_a0b1a3b2b1a834::t_d9c7d2d14d6aa0 3,5,8
+zeitlabs_payments/migrations/0004_transaction_identity.py
+  s_a0b1a3b2b1a834::t_4f208d76d0baf4 3,5,8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6586020dd03073ecc13f52d7024d9dfc7735c966",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

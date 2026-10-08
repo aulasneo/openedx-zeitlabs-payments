@@ -16,7 +16,7 @@ from django.conf import settings
 
 
 def run_legacy_migration():
-    """A duplicate preflight changes nothing; reconciled legacy data migrates intact."""
+    """Verify that duplicate preflight preserves records and reconciled data migrates intact."""
     from django.db import IntegrityError, connection, transaction
     from django.db.migrations.executor import MigrationExecutor
 
@@ -83,7 +83,7 @@ def run_constraint_race():
 
 
 def run_payment_races():  # pylint: disable=too-many-statements
-    """InnoDB locks and uniqueness serialize recording, invoices, and fulfillment."""
+    """Verify that InnoDB locks and uniqueness serialize payment processing."""
     from django.contrib.auth import get_user_model
     from django.core.management import call_command
     from django.db import connections

@@ -1,0 +1,32 @@
+tests/test_initiation_concurrency.py
+  s_a0b1a3b2b1a834::t_7d9efe4b32d017 1-18
+test_utils/initiation_concurrency.py
+  s_a0b1a3b2b1a834::t_7d9efe4b32d017 1,5-16,18-98
+  s_a0b1a3b2b1a834::t_b5b878665495b2 2-4,17
+docs/how-tos/index.rst
+  s_a0b1a3b2b1a834::t_86d3f3222d94a5 51-52,63-66
+tests/test_initiation.py
+  s_a0b1a3b2b1a834::t_b18face4484db7 8,151-154,160,163,172-184
+zeitlabs_payments/templates/zeitlabs_payments/payment_error.html
+  s_a0b1a3b2b1a834::t_cbc3c72bfc5b8b 43
+zeitlabs_payments/templates/zeitlabs_payments/styles.html
+  s_a0b1a3b2b1a834::t_9395ed292dc594 294-297
+zeitlabs_payments/views.py
+  s_a0b1a3b2b1a834::t_66fd42b92a3703 145-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51b60fa815b258a2676daa9579a891077ede4a13",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

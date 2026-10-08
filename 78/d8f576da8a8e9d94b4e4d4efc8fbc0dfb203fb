@@ -1,0 +1,24 @@
+tests/test_providers/test_recovery.py
+  s_a0b1a3b2b1a834::t_655ae0f5842739 16
+  s_a0b1a3b2b1a834::t_6d37093be1cceb 364-402
+zeitlabs_payments/providers/base.py
+  s_a0b1a3b2b1a834::t_d35a61d6702332 383-393
+zeitlabs_payments/providers/manual_payment/views.py
+  s_a0b1a3b2b1a834::t_f7d929eb9caa10 190-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78d8f576da8a8e9d94b4e4d4efc8fbc0dfb203fb",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

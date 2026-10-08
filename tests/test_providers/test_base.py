@@ -25,7 +25,9 @@ User = get_user_model()
 @pytest.fixture
 def base_processor():
     """processor fixture"""
-    return BaseProcessor()
+    processor = BaseProcessor()
+    processor.SLUG = 'test'
+    return processor
 
 
 @pytest.fixture
@@ -76,7 +78,8 @@ def test_payment_view_for_exception(
     base_processor.payment_view(cart=cart, request=fake_request)
     mock_render.assert_called_once_with(
         fake_request,
-        'zeitlabs_payments/payment_error.html'
+        'zeitlabs_payments/payment_error.html',
+        {'initialization_failed': True, 'cart_id': cart.pk}, status=502,
     )
 
 

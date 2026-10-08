@@ -4,11 +4,12 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpResponseBadRequest
+from django.db import transaction as db_transaction
+from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, render
 from django.utils.decorators import method_decorator
 from django.views import View
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from django.views.generic import TemplateView
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -102,6 +103,8 @@ class CheckoutView(LoginRequiredMixin, TemplateView):
         return self.render_to_response(context)
 
 
+@method_decorator(db_transaction.non_atomic_requests, name='dispatch')
+@method_decorator(csrf_protect, name='dispatch')
 class InitiatePaymentView(LoginRequiredMixin, View):
     """
     View that initiates the payment process for a given provider.
@@ -109,13 +112,13 @@ class InitiatePaymentView(LoginRequiredMixin, View):
     Only accessible by authenticated users.
     """
 
-    def get(self, request: Any, provider: str, cart_id: str) -> Any:
+    def post(self, request: Any, provider: str, cart_id: str) -> Any:
         """
         Initiate the payment by calling the appropriate processor.
 
         :param request: Django request object
         :param provider: The payment provider slug
-        :param cart_id: UUID of the cart
+        :param cart_id: ID of the cart
         :return: Rendered payment page or error response
         """
         try:
@@ -137,24 +140,52 @@ class InitiatePaymentView(LoginRequiredMixin, View):
                 f'Error: User {request.user} attempted to access cart belonging to {cart.user}.'
             )
 
-        payment_view = processor.payment_view(
-            cart=cart,
-            request=request,
-            use_client_side_checkout=False,
-        )
+        # Commit the claim before any external request. A conditional update
+        # admits only one request, including when get_cart returned stale data.
+        # Reject caller-owned transactions: their rollback could erase the
+        # claim after the gateway has already created an order.
+        with db_transaction.atomic(durable=True):
+            claimed = models.Cart.objects.filter(
+                pk=cart.pk, user=request.user, status=models.Cart.Status.PENDING,
+            ).update(status=models.Cart.Status.PROCESSING)
+            if not claimed:
+                logger.warning('Cannot initiate payment for cart %s: it is no longer pending.', cart.pk)
+                return HttpResponse('Payment cannot be started for this cart. Contact support.', status=409)
+            cart.status = models.Cart.Status.PROCESSING
+            models.AuditLog.log(
+                action=models.AuditLog.AuditActions.CART_STATUS_UPDATED,
+                cart=cart,
+                gateway=processor.SLUG,
+                context={
+                    'old_status': models.Cart.Status.PENDING,
+                    'new_status': models.Cart.Status.PROCESSING,
+                },
+            )
 
-        cart.status = models.Cart.Status.PROCESSING
-        cart.save(update_fields=['status'])
+        try:
+            payment_view = processor.payment_view(
+                cart=cart,
+                request=request,
+                use_client_side_checkout=False,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception('Payment initialization failed for cart %s with %s.', cart.pk, processor.SLUG)
+            payment_view = render(
+                request, 'zeitlabs_payments/payment_error.html',
+                {'initialization_failed': True, 'cart_id': cart.pk}, status=502,
+            )
 
-        models.AuditLog.log(
-            action=models.AuditLog.AuditActions.CART_STATUS_UPDATED,
-            cart=cart,
-            context={
-                'old_status': models.Cart.Status.PENDING,
-                'new_status': models.Cart.Status.PROCESSING,
-            }
-        )
-        logger.info(f'Cart {cart.id} status updated to {models.Cart.Status.PROCESSING}')
+        if payment_view.status_code >= 400:
+            # The gateway may have accepted an order before the failure. Keep
+            # the claim and never reset the cart to pending automatically.
+            models.AuditLog.log(
+                action=models.AuditLog.AuditActions.PAYMENT_INITIALIZATION_FAILED,
+                cart=cart,
+                gateway=processor.SLUG,
+                context={'response_status': payment_view.status_code},
+            )
+            logger.warning('Payment initialization for cart %s returned HTTP %s.', cart.pk, payment_view.status_code)
+            return payment_view
 
         models.AuditLog.log(
             action=models.AuditLog.AuditActions.REDIRECT_TO_PAYMENT,

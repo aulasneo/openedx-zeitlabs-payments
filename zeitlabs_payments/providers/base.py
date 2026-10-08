@@ -110,7 +110,11 @@ class BaseProcessor:
                 **kwargs,
             )
         except Exception:  # pylint: disable=broad-exception-caught
-            return render(request, 'zeitlabs_payments/payment_error.html')
+            logger.exception('Payment initialization failed for cart %s with %s.', cart.pk, self.SLUG)
+            return render(
+                request, 'zeitlabs_payments/payment_error.html',
+                {'initialization_failed': True, 'cart_id': cart.pk}, status=502,
+            )
         return render(
             request,
             self.TEMPLATE_NAME,

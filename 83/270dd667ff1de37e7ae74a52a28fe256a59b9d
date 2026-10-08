@@ -1,0 +1,23 @@
+tests/test_serializers.py
+  s_a0b1a3b2b1a834::t_9ace853a09c8cf 15
+zeitlabs_payments/providers/base.py
+  s_a0b1a3b2b1a834::t_13472db705ff0b 408-411
+zeitlabs_payments/providers/manual_payment/views.py
+  s_a0b1a3b2b1a834::t_46dc20ca2c5b7a 202-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83270dd667ff1de37e7ae74a52a28fe256a59b9d",
+  "prompts": {},
+  "sessions": {
+    "s_a0b1a3b2b1a834": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a116f1-82b3-76d0-8248-74926959606c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Andrés González <andres@aulasneo.com>"
+    }
+  }
+}

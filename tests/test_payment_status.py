@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from test_utils.dummy_processor import DummyProcessor
 from zeitlabs_payments.cart_handler import CART_HANDLER
-from zeitlabs_payments.exceptions import InvalidPaymentStatusError
+from zeitlabs_payments.exceptions import InvalidCartError, InvalidPaymentStatusError
 from zeitlabs_payments.models import AuditLog, Cart, CatalogueItem, Invoice, Transaction, WebhookEvent
 from zeitlabs_payments.providers.base import PaymentOutcome
 from zeitlabs_payments.providers.manual_payment.processor import ManualPaymentProcessor
@@ -187,3 +187,49 @@ def test_instance_provider_mapping_is_respected(purchase):  # pylint: disable=re
     processor.TRANSACTION_STATUS_SUCCESS = 'confirmed'
     assert processor.process_payment_and_update_records(transaction_status='confirmed', **purchase) is not None
     assert Transaction.objects.get().status == 'success'
+
+
+@pytest.mark.parametrize('alias', ['', ' \t\n'])
+@pytest.mark.parametrize('payment_status', ['', ' \t\n', None])
+def test_blank_success_alias_cannot_confirm_payment(
+    purchase, alias, payment_status,  # pylint: disable=redefined-outer-name
+):
+    """Blank provider configuration cannot turn missing confirmation into a paid purchase."""
+    processor = DummyProcessor()
+    processor.TRANSACTION_STATUS_SUCCESS = alias
+    params = {key: value for key, value in purchase.items() if key not in ('request', 'data')}
+    with pytest.raises(InvalidPaymentStatusError):
+        processor.handle_payment(user=purchase['request'].user, transaction_status=payment_status, **params)
+    assert processor.process_payment_and_update_records(transaction_status=payment_status, **purchase) is None
+    assert_no_purchase_effects(purchase['cart'])
+    assert processor.require_successful_payment('success') == 'success'
+
+
+@pytest.mark.parametrize('setting', [
+    'TRANSACTION_STATUS_SUCCESS', 'TRANSACTION_STATUS_PENDING', 'TRANSACTION_STATUS_FAILED',
+])
+@pytest.mark.parametrize('alias', ['', ' \t\n', None])
+def test_blank_configured_aliases_are_ignored(setting, alias):
+    """An empty alias never maps a missing gateway status to any recognized outcome."""
+    processor = DummyProcessor()
+    setattr(processor, setting, alias)
+    assert processor.normalize_payment_status('') == PaymentOutcome.UNKNOWN
+    assert processor.normalize_payment_status(' \t\n') == PaymentOutcome.UNKNOWN
+
+
+def test_blank_success_alias_cannot_recover_unconfirmed_record(purchase):  # pylint: disable=redefined-outer-name
+    """Recovery also rejects a historical blank result when the success alias is blank."""
+    processor = DummyProcessor()
+    processor.TRANSACTION_STATUS_SUCCESS = ' \t\n'
+    cart = purchase['cart']
+    record = Transaction.objects.create(
+        cart=cart, type=Transaction.TransactionType.PAYMENT, status='', gateway=processor.SLUG,
+        gateway_transaction_id=purchase['transaction_id'], method='card', amount='50', currency='SAR',
+    )
+    Cart.objects.filter(pk=cart.pk).update(status=Cart.Status.PAID)
+    with pytest.raises(InvalidCartError, match='Only successful recorded payments'):
+        processor.complete_paid_cart(cart, purchase['request'], record)
+    assert not Invoice.objects.exists()
+    assert not CourseEnrollment.objects.filter(user=cart.user).exists()
+    cart.refresh_from_db()
+    assert cart.fulfilled_at is None
